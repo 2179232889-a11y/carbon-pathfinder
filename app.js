@@ -6,6 +6,7 @@ const EUR_CNY_RATE = 7.5051;
 const EUR_CNY_NOTE = `参考汇率 €1≈¥${EUR_CNY_RATE.toFixed(4)}`;
 const CQ_ELECTRICITY_FACTOR = 0.5581;
 const PRODUCT_OUTPUT_T = 787;
+const CO2_TO_CARBON_FACTOR = 12 / 44;
 const PROJECTS_STORAGE_KEY = "carbon-pathfinder-projects-v2";
 const LEGACY_STORAGE_KEY = "carbon-pathfinder-demo-v1";
 
@@ -145,6 +146,7 @@ const BALANCE_KEYS = ["input", "product", "waste", "byproductLoss"];
 let balancePaintFrame = 0;
 let cbamPaintFrame = 0;
 let persistTimer = 0;
+let lastStorageErrorAt = 0;
 let lastSearchFocus = null;
 let lastAiFocus = null;
 let lastMenuFocus = null;
@@ -216,14 +218,26 @@ function getLedgerTotal() {
   return state.ledgerRows.reduce((sum, row) => sum + Number(row.emissions || 0), 0);
 }
 
+function classifyLedgerRow(row) {
+  const text = `${row.name || ""} ${row.source || ""}`;
+  if (/电力|电费|能源|蒸汽|燃气|燃料/.test(text)) return "energy";
+  if (/物流|运输|运费|配送/.test(text)) return "transport";
+  if (/采购|发票|原料|材料|外购/.test(text)) return "material";
+  return "process";
+}
+
+function isElectricityRow(row) {
+  return /电力|电费/.test(`${row.name || ""} ${row.source || ""}`);
+}
+
 function getCostMetrics(method = state.costMethod) {
   const ledgerTotal = getLedgerTotal();
-  const rowCost = (matcher) => state.ledgerRows
-    .filter((row) => matcher(row.name))
+  const rowCost = (category) => state.ledgerRows
+    .filter((row) => classifyLedgerRow(row) === category)
     .reduce((sum, row) => sum + Number(row.emissions || 0) * state.carbonPrice / 10000, 0);
-  const rawMaterial = rowCost((name) => name.includes("精制棉") || name.includes("一氯甲烷"));
-  const electricity = rowCost((name) => name.includes("电力"));
-  const transport = rowCost((name) => name.includes("运输") || name.includes("物流"));
+  const rawMaterial = rowCost("material");
+  const electricity = rowCost("energy");
+  const transport = rowCost("transport");
   const process = Math.max(0, ledgerTotal * state.carbonPrice / 10000 - rawMaterial - electricity - transport);
   const base = { process, transport, electricity, material: rawMaterial };
   const methodFactors = {
@@ -246,11 +260,84 @@ function getCostMetrics(method = state.costMethod) {
   };
 }
 
+function clampNumber(value, min = 0, max = Number.POSITIVE_INFINITY) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return min > 0 ? min : 0;
+  return Math.min(max, Math.max(min, numeric));
+}
+
+function getWizardStepValidation(step = state.wizardStep) {
+  if (step === 1) {
+    if (!String(state.organization || "").trim()) return { valid: false, fieldId: "organization-input", message: "请填写企业名称后再继续。" };
+    if (!String(state.province || "").trim()) return { valid: false, fieldId: "province-input", message: "请填写省份或地区后再继续。" };
+    if (!String(state.selections.industry || "").trim()) return { valid: false, fieldId: "industry-input", message: "请填写或选择企业所属行业。" };
+  }
+  if (step === 2) {
+    if (!String(state.selections.product || "").trim()) return { valid: false, fieldId: "product-input", message: "请填写核心产品名称。" };
+    if (!(Number(state.productOutput) > 0)) return { valid: false, fieldId: "product-output-input", message: "产品产量必须大于 0 t。" };
+    if (!String(state.selections.process || "").trim()) return { valid: false, fieldId: "process-input", message: "请填写核心生产工艺。" };
+  }
+  if (step === 3) {
+    if (!state.dataAsOf || !Number.isFinite(Date.parse(`${state.dataAsOf}T00:00:00`))) {
+      return { valid: false, fieldId: "data-as-of-input", message: "请填写有效的数据截止日期。" };
+    }
+    const numericRules = [
+      ["electricityFactor", "electricity-factor-input", 0, Number.POSITIVE_INFINITY, "电力排放因子不能为负数。"],
+      ["carbonPrice", "carbon-price-input", 0, Number.POSITIVE_INFINITY, "项目碳价不能为负数。"],
+      ["cbamEuPrice", "eua-price-input", 0, Number.POSITIVE_INFINITY, "欧盟 EUA 碳价不能为负数。"],
+      ["transportDistance", "transport-distance-input", 0, Number.POSITIVE_INFINITY, "运输距离不能为负数。"],
+      ["cbamFreeAllocation", "free-allocation-input", 0, 100, "CBAM 免费配额抵扣必须在 0%–100% 之间。"]
+    ];
+    for (const [key, fieldId, min, max, message] of numericRules) {
+      const numeric = Number(state[key]);
+      if (!Number.isFinite(numeric) || numeric < min || numeric > max) {
+        return { valid: false, fieldId, message };
+      }
+    }
+    for (const key of ["roadEmissionAdjustment", "railEmissionAdjustment"]) {
+      if (!Number.isFinite(Number(state[key]))) {
+        return {
+          valid: false,
+          fieldId: key === "roadEmissionAdjustment" ? "road-adjustment-input" : "rail-adjustment-input",
+          message: "运输强度调整必须是有效数字，允许填写负数。"
+        };
+      }
+    }
+  }
+  return { valid: true, fieldId: null, message: "" };
+}
+
+function showWizardValidation(result) {
+  const validation = document.getElementById("wizard-validation");
+  if (!validation) return;
+  document.querySelectorAll("#page-content [aria-invalid='true']").forEach((field) => field.removeAttribute("aria-invalid"));
+  validation.hidden = !result.message;
+  validation.textContent = result.message;
+  const field = result.fieldId ? document.getElementById(result.fieldId) : null;
+  if (field) {
+    field.setAttribute("aria-invalid", "true");
+    field.setAttribute("aria-describedby", "wizard-validation");
+    field.scrollIntoView({
+      block: "center",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+    });
+    requestAnimationFrame(() => field.focus({ preventScroll: true }));
+  }
+}
+
+function clearWizardValidation(field) {
+  field?.removeAttribute("aria-invalid");
+  const validation = document.getElementById("wizard-validation");
+  if (validation && !document.querySelector("#page-content [aria-invalid='true']")) {
+    validation.hidden = true;
+    validation.textContent = "";
+  }
+}
+
 function snapshotActiveProject() {
   return {
     projectName: state.projectName,
     projectPeriod: state.projectPeriod,
-    dataAsOf: state.dataAsOf,
     dataAsOf: state.dataAsOf,
     projectStatus: state.projectStatus,
     isDemoData: state.isDemoData,
@@ -323,22 +410,18 @@ function persistState() {
       activeProjectId,
       projects
     }));
-  } catch {}
+  } catch {
+    if (Date.now() - lastStorageErrorAt > 5000) {
+      lastStorageErrorAt = Date.now();
+      showToast("自动保存失败", "浏览器无法写入本地存储，请立即导出项目备份，避免数据丢失");
+    }
+  }
 }
 
 function encodeShareState() {
   const payload = {
-    version: 1,
-    projectName: state.projectName,
-    projectPeriod: state.projectPeriod,
-    selections: state.selections,
-    ledgerRows: state.ledgerRows,
-    balanceMass: state.balanceMass,
-    costMethod: state.costMethod,
-    selectedRoute: state.selectedRoute,
-    cbamVolume: state.cbamVolume,
-    cbamEuPrice: state.cbamEuPrice,
-    cbamIntensity: state.cbamIntensity
+    version: 2,
+    ...snapshotActiveProject()
   };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = "";
@@ -354,7 +437,7 @@ function decodeShareState(value) {
     const binary = atob(padded);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     const payload = JSON.parse(new TextDecoder().decode(bytes));
-    if (payload.version !== 1 || !Array.isArray(payload.ledgerRows)) return null;
+    if (![1, 2].includes(payload.version) || !Array.isArray(payload.ledgerRows)) return null;
     return payload;
   } catch {
     return null;
@@ -367,18 +450,19 @@ function restoreState() {
     if (shared) {
       const payload = decodeShareState(shared);
       if (payload) {
+        applyProject(payload);
         state.projectName = payload.projectName || "共享核算项目";
         state.projectPeriod = payload.projectPeriod || ACCOUNTING_PERIOD;
         state.dataAsOf = payload.dataAsOf || DATA_AS_OF;
-        state.selections = payload.selections || state.selections;
+        state.selections = payload.selections || { ...state.selections };
         state.ledgerRows = payload.ledgerRows;
         state.ledgerLoaded = true;
-        state.balanceMass = payload.balanceMass || state.balanceMass;
+        state.balanceMass = payload.balanceMass || { ...state.balanceMass };
         state.costMethod = payload.costMethod || state.costMethod;
         state.selectedRoute = payload.selectedRoute || state.selectedRoute;
-        state.cbamVolume = Number(payload.cbamVolume) || state.cbamVolume;
-        state.cbamEuPrice = Number(payload.cbamEuPrice) || state.cbamEuPrice;
-        state.cbamIntensity = Number(payload.cbamIntensity) || state.cbamIntensity;
+        if (payload.cbamVolume !== undefined) state.cbamVolume = Number(payload.cbamVolume);
+        if (payload.cbamEuPrice !== undefined) state.cbamEuPrice = Number(payload.cbamEuPrice);
+        if (payload.cbamIntensity !== undefined) state.cbamIntensity = Number(payload.cbamIntensity);
         return;
       }
     }
@@ -443,11 +527,11 @@ function beginNewProject(saveCurrent = true) {
     isDemoData: false,
     createdAt: now,
     updatedAt: now,
-    organization: "未命名企业",
+    organization: "",
     organizationCode: "",
-    province: "全国",
+    province: "",
     city: "",
-    productOutput: 1,
+    productOutput: 0,
     carbonPrice: CN_CARBON_PRICE,
     electricityFactor: PROVINCE_FACTORS["全国"],
     electricityFactorSource: "生态环境部 2023 年全国电力平均排放因子",
@@ -455,7 +539,7 @@ function beginNewProject(saveCurrent = true) {
     railRoute: "工厂 → 港口 · 公转铁联运",
     transportDistance: 420,
     wizardStep: 1,
-    selections: { industry: "精细化工", product: "CMC羧甲基纤维素钠", process: "水媒法" },
+    selections: { industry: "", product: "", process: "" },
     ledgerLoaded: false,
     ledgerRows: [],
     balanceMass: { input: 0, product: 0, waste: 0, byproductLoss: 0 },
@@ -463,12 +547,12 @@ function beginNewProject(saveCurrent = true) {
     balanceMode: "质量平衡",
     costMethod: "按重量",
     selectedRoute: "road",
-    cbamVolume: 820,
+    cbamVolume: 0,
     cbamEuPrice: EUA_PRICE,
-    cbamIntensity: 2.15,
-    cbamFreeAllocation: 70,
-    roadEmissionAdjustment: 0.23,
-    railEmissionAdjustment: -0.18,
+    cbamIntensity: 0,
+    cbamFreeAllocation: 0,
+    roadEmissionAdjustment: 0,
+    railEmissionAdjustment: 0,
     cbamApplied: false
   };
   projects.unshift(project);
@@ -547,8 +631,12 @@ function dashboardPage() {
   const mappedRows = state.ledgerRows.filter((row) => row.status !== "待确认").length;
   const dataCompleteness = state.ledgerRows.length ? mappedRows / state.ledgerRows.length * 100 : 0;
   const carbonIntensity = total / Math.max(1, state.productOutput);
-  const scope1 = state.ledgerRows.filter((row) => row.name.includes("蒸汽")).reduce((sum, row) => sum + Number(row.emissions), 0);
-  const scope2 = state.ledgerRows.filter((row) => row.name.includes("电力")).reduce((sum, row) => sum + Number(row.emissions), 0);
+  const scope1 = state.ledgerRows
+    .filter((row) => classifyLedgerRow(row) === "process" || (classifyLedgerRow(row) === "energy" && !isElectricityRow(row)))
+    .reduce((sum, row) => sum + Number(row.emissions || 0), 0);
+  const scope2 = state.ledgerRows
+    .filter((row) => classifyLedgerRow(row) === "energy" && isElectricityRow(row))
+    .reduce((sum, row) => sum + Number(row.emissions || 0), 0);
   const scope3 = Math.max(0, total - scope1 - scope2);
   const p1 = total ? scope1 / total * 100 : 0;
   const p2 = total ? scope2 / total * 100 : 0;
@@ -581,7 +669,7 @@ function dashboardPage() {
           <div>
             <span class="hero-number-label">本期已核算碳排放</span>
             <div class="hero-number"><strong>${formatNumber(total, 1)}</strong><span>tCO₂e</span></div>
-            <div class="delta"><strong>${hasLedger ? "● 台账数据已载入" : "● 等待企业填报"}</strong><span>${hasLedger ? `数据截止 ${state.dataAsOf}` : "尚未录入活动数据"}</span></div>
+            <div class="delta"><strong>${hasLedger ? `● ${state.isDemoData ? "示例台账已载入" : "项目台账已载入"}` : "● 等待企业填报"}</strong><span>${hasLedger ? `数据截止 ${state.dataAsOf}` : "尚未录入活动数据"}</span></div>
           </div>
           <div class="mini-bars" role="img" aria-label="各排放源碳排放量分布">
             ${miniValues.map((value, i) => `<i style="--h:${Math.max(5, value / miniMax * 100)}%;--i:${i}"></i>`).join("")}
@@ -720,13 +808,13 @@ function projectsPage() {
       <div class="card empty-page page-enter">
         ${icon("file")}
         <h2>还没有核算项目</h2>
-        <p>新建第一个项目后，系统会自动保存台账和后续所有情景参数。</p>
+        <p>新建第一个项目后，系统会在本机自动保存台账和后续所有情景参数。</p>
         <button class="button primary" data-action="new-project">${icon("plus")} 新建核算项目</button>
       </div>
     `}
     <section class="project-guide page-enter" aria-label="项目保存说明">
       <div><strong>独立项目快照</strong><p>台账、天平、成本、CBAM 和报告参数属于各自项目，不会互相覆盖。</p></div>
-      <div><strong>自动保存</strong><p>编辑结束或切换页面后写入浏览器本地存储，刷新页面仍可恢复。</p></div>
+      <div><strong>自动保存在本机</strong><p>编辑结束或切换页面后写入当前浏览器的本地存储，刷新页面仍可恢复。建议定期导出项目备份。</p></div>
       <div><strong>完成与复制</strong><p>在报告中标记项目完成；复制项目可快速创建相似情景进行对比。</p></div>
     </section>
   `;
@@ -790,13 +878,13 @@ function wizardPage() {
       <article class="card selection-card">
         ${step === 1 ? `
           <div class="wizard-field-grid">
-            <label class="wizard-field"><span>企业名称</span><input id="organization-input" type="text" maxlength="100" value="${escapeHtml(state.organization)}" placeholder="填写企业全称"></label>
+            <label class="wizard-field"><span>企业名称</span><input id="organization-input" type="text" maxlength="100" value="${escapeHtml(state.organization)}" placeholder="填写企业全称" autocomplete="organization" required></label>
             <label class="wizard-field"><span>统一社会信用代码</span><input id="organization-code-input" type="text" maxlength="30" value="${escapeHtml(state.organizationCode)}" placeholder="可不填"></label>
-            <label class="wizard-field"><span>省份 / 地区</span><input id="province-input" type="text" list="province-options" maxlength="30" value="${escapeHtml(state.province)}" placeholder="例如：四川"></label>
+            <label class="wizard-field"><span>省份 / 地区</span><input id="province-input" type="text" list="province-options" maxlength="30" value="${escapeHtml(state.province)}" placeholder="例如：四川" required></label>
             <label class="wizard-field"><span>城市 / 基地</span><input id="city-input" type="text" maxlength="50" value="${escapeHtml(state.city)}" placeholder="例如：成都"></label>
           </div>
           <datalist id="province-options">${Object.keys(PROVINCE_FACTORS).map((province) => `<option value="${province}"></option>`).join("")}</datalist>
-          <label class="wizard-field wide-field"><span>行业（可自由填写）</span><input id="industry-input" type="text" list="industry-options" maxlength="60" value="${escapeHtml(state.selections.industry)}" placeholder="输入或选择行业"></label>
+          <label class="wizard-field wide-field"><span>行业（可自由填写）</span><input id="industry-input" type="text" list="industry-options" maxlength="60" value="${escapeHtml(state.selections.industry)}" placeholder="输入或选择行业" required></label>
           <datalist id="industry-options">${INDUSTRY_CATALOG.map((item) => `<option value="${item.name}"></option>`).join("")}</datalist>
           <h2 class="selection-title">选择行业</h2>
           <div class="selection-grid">
@@ -810,8 +898,8 @@ function wizardPage() {
           </div>
         ` : step === 2 ? `
           <div class="wizard-field-grid">
-            <label class="wizard-field"><span>核心产品（可自由填写）</span><input id="product-input" type="text" list="product-options" maxlength="80" value="${escapeHtml(state.selections.product)}" placeholder="输入或选择产品"></label>
-            <label class="wizard-field"><span>产品产量（t）</span><input id="product-output-input" type="number" min="0.01" step="0.01" value="${Number(state.productOutput) || 1}" placeholder="本周期合格产品产量"></label>
+            <label class="wizard-field"><span>核心产品（可自由填写）</span><input id="product-input" type="text" list="product-options" maxlength="80" value="${escapeHtml(state.selections.product)}" placeholder="输入或选择产品" required></label>
+            <label class="wizard-field"><span>产品产量（t）</span><input id="product-output-input" type="number" min="0.01" step="0.01" value="${state.productOutput > 0 ? state.productOutput : ""}" placeholder="本周期合格产品产量" required></label>
           </div>
           <datalist id="product-options">${currentProductChoices().map((name) => `<option value="${name}"></option>`).join("")}</datalist>
           <h2 class="selection-title">常用产品</h2>
@@ -824,7 +912,7 @@ function wizardPage() {
               </button>
             `).join("")}
           </div>
-          <label class="wizard-field wide-field"><span>核心工艺（可自由填写）</span><input id="process-input" type="text" list="process-options" maxlength="80" value="${escapeHtml(state.selections.process)}" placeholder="输入或选择工艺"></label>
+          <label class="wizard-field wide-field"><span>核心工艺（可自由填写）</span><input id="process-input" type="text" list="process-options" maxlength="80" value="${escapeHtml(state.selections.process)}" placeholder="输入或选择工艺" required></label>
           <datalist id="process-options">${currentProcessChoices().map((name) => `<option value="${name}"></option>`).join("")}</datalist>
           <h2 class="selection-title">常用生产工艺</h2>
           <div class="selection-grid">
@@ -843,7 +931,7 @@ function wizardPage() {
             <label class="wizard-field"><span>项目碳价（元/tCO₂e）</span><input id="carbon-price-input" type="number" min="0" step="0.01" value="${state.carbonPrice}"></label>
             <label class="wizard-field"><span>欧盟 EUA 碳价（€/tCO₂e）</span><input id="eua-price-input" type="number" min="0" step="0.01" value="${state.cbamEuPrice}"><small class="fx-note" id="eua-price-cny">${formatCnyEquivalent(state.cbamEuPrice)}/t · ${EUR_CNY_NOTE}</small></label>
             <label class="wizard-field"><span>主要运输距离（km）</span><input id="transport-distance-input" type="number" min="0" step="1" value="${state.transportDistance}"></label>
-            <label class="wizard-field"><span>数据截止日期</span><input id="data-as-of-input" type="date" value="${escapeHtml(state.dataAsOf)}"></label>
+            <label class="wizard-field"><span>数据截止日期</span><input id="data-as-of-input" type="date" value="${escapeHtml(state.dataAsOf)}" required></label>
             <label class="wizard-field"><span>CBAM 免费配额抵扣（%）</span><input id="free-allocation-input" type="number" min="0" max="100" step="0.1" value="${state.cbamFreeAllocation}"></label>
             <label class="wizard-field"><span>公路运输强度调整（t/t）</span><input id="road-adjustment-input" type="number" step="0.01" value="${state.roadEmissionAdjustment}"></label>
             <label class="wizard-field"><span>低碳线路强度调整（t/t）</span><input id="rail-adjustment-input" type="number" step="0.01" value="${state.railEmissionAdjustment}"></label>
@@ -865,7 +953,7 @@ function wizardPage() {
 
       <aside class="card wizard-summary">
         <label class="summary-field" for="project-name-input">项目名称
-          <input id="project-name-input" type="text" maxlength="80" value="${escapeHtml(state.projectName)}" placeholder="例如：2026 Q4 CMC 核算">
+          <input id="project-name-input" type="text" maxlength="80" value="${escapeHtml(state.projectName)}" placeholder="例如：2026 Q4 产品核算">
         </label>
         <label class="summary-field" for="project-period-input">核算周期
           <input id="project-period-input" type="text" maxlength="24" value="${escapeHtml(state.projectPeriod)}" placeholder="例如：2026 Q4">
@@ -874,15 +962,16 @@ function wizardPage() {
         <h3>核算画像预览</h3>
         <p>已根据选择匹配标准核算模板</p>
         <div class="summary-list">
-          <div><span>核算企业</span><strong>${escapeHtml(state.organization)}</strong></div>
-          <div><span>所在地区</span><strong>${escapeHtml([state.province, state.city].filter(Boolean).join(" / "))}</strong></div>
-          <div><span>企业行业</span><strong>${state.selections.industry}</strong></div>
-          <div><span>核心产品</span><strong>${state.selections.product}</strong></div>
-          <div><span>生产工艺</span><strong>${state.selections.process}</strong></div>
-          <div><span>产品产量</span><strong>${formatNumber(state.productOutput, 2)} t</strong></div>
+          <div><span>核算企业</span><strong>${escapeHtml(state.organization || "待填写")}</strong></div>
+          <div><span>所在地区</span><strong>${escapeHtml([state.province, state.city].filter(Boolean).join(" / ") || "待填写")}</strong></div>
+          <div><span>企业行业</span><strong>${escapeHtml(state.selections.industry || "待填写")}</strong></div>
+          <div><span>核心产品</span><strong>${escapeHtml(state.selections.product || "待填写")}</strong></div>
+          <div><span>生产工艺</span><strong>${escapeHtml(state.selections.process || "待填写")}</strong></div>
+          <div><span>产品产量</span><strong>${state.productOutput > 0 ? `${formatNumber(state.productOutput, 2)} t` : "待填写"}</strong></div>
           <div><span>适用标准</span><strong>ISO 14067:2018</strong></div>
         </div>
         <div class="summary-note">系统将只展示该工艺必需的核算字段，避免企业面对无关指标与边界概念。</div>
+        <p class="wizard-validation" id="wizard-validation" role="alert" hidden></p>
         <button class="button primary wide" data-action="${step < 3 ? "wizard-next" : "generate-boundary"}">
           ${step < 3 ? "下一步" : "创建项目并进入台账"} ${icon("arrow-right")}
         </button>
@@ -902,9 +991,12 @@ function ledgerPage() {
     )}
     <div class="card upload-zone page-enter" id="upload-zone">
       <div class="upload-icon">${icon("upload")}</div>
-      <div class="upload-copy"><strong>拖入标准化 CSV 活动台账</strong><p>支持 UTF-8 CSV · 字段：name, source, amount, unit, factor, factor_unit, emissions, status</p></div>
+      <div class="upload-copy"><strong>拖入标准化 CSV 活动台账</strong><p>支持 UTF-8 CSV · 字段：name, source, amount, unit, factor, factor_unit, emissions, status。因子单位支持 kgCO₂e/… 或 tCO₂e/…</p></div>
       <input type="file" id="file-input" hidden accept=".csv,text/csv">
-      <button class="button primary" data-action="pick-file">${icon("upload")} 选择文件</button>
+      <div class="upload-actions">
+        <button class="button" data-action="download-ledger-template">${icon("download")} 下载 CSV 模板</button>
+        <button class="button primary" data-action="pick-file">${icon("upload")} 选择文件</button>
+      </div>
     </div>
 
     <div class="source-grid page-enter">
@@ -927,7 +1019,7 @@ function ledgerPage() {
     <div class="public-data-banner page-enter">
       <span class="public-data-icon">${icon("globe")}</span>
       <div><strong>当前项目核算参数 · ${escapeHtml(state.organization)}</strong><p>碳价 ¥${state.carbonPrice.toFixed(2)}/t · ${escapeHtml(state.province)}电力 ${state.electricityFactor} kgCO₂/kWh · ICE EUA €${state.cbamEuPrice.toFixed(2)}/t（${formatCnyEquivalent(state.cbamEuPrice)}/t）</p></div>
-      ${statusChip("自动保存")}
+      ${statusChip("自动保存在本机")}
     </div>
 
     <article class="card table-card page-enter">
@@ -936,12 +1028,13 @@ function ledgerPage() {
         <div class="toolbar-actions">
           <button class="button small" data-action="add-ledger-row">${icon("plus")} 新增活动数据</button>
           <button class="button small ghost" data-action="load-demo">${icon("spark")} 载入示例台账</button>
-          <button class="button primary small" data-action="go-balance" ${state.ledgerLoaded ? "" : "disabled"}>${icon("scale")} 进入碳流校验</button>
+          <button class="button primary small" data-action="go-balance" ${state.ledgerRows.length ? "" : "disabled"}>${icon("scale")} 进入碳流校验</button>
         </div>
       </div>
       ${state.ledgerLoaded ? `
         ${state.ledgerRows.length ? `
-          <div class="table-wrap">
+          <p class="table-scroll-hint" role="note">左右滑动查看全部字段，右侧可修改排放量并删除数据。</p>
+          <div class="table-wrap" tabindex="0" aria-label="活动数据映射表，可左右滚动">
             <table class="editable-table">
               <thead><tr><th>数据项</th><th>来源</th><th>数量</th><th>单位</th><th>排放因子</th><th>因子单位</th><th>排放量 (tCO₂e)</th><th>状态</th><th>操作</th></tr></thead>
               <tbody>
@@ -967,7 +1060,7 @@ function ledgerPage() {
             </table>
           </div>
           <div class="table-footer">
-            <span data-ledger-count-text>${state.ledgerRows.length} 项活动数据 · ${state.ledgerRows.filter((row) => row.status === "待确认").length} 项需人工确认 · 修改后自动保存</span>
+            <span data-ledger-count-text>${state.ledgerRows.length} 项活动数据 · ${state.ledgerRows.filter((row) => row.status === "待确认").length} 项需人工确认 · 修改后自动保存在本机</span>
             <span class="ledger-total">核算活动排放 <strong data-ledger-total>${formatNumber(ledgerTotal)} tCO₂e</strong></span>
           </div>
         ` : `
@@ -1093,7 +1186,7 @@ function getBalancePresentation(metrics, conversion = 1, unit = "tC") {
       processStatus: "待校验",
       processCopy: "碳流尚未闭合，过程排放结果暂停输出，暂不可入账。",
       action: "reset-balance",
-      buttonLabel: "恢复基准值"
+      buttonLabel: state.isDemoData ? "恢复基准值" : "清空后重填"
     };
   }
   if (metrics.issue === "missingWaste") {
@@ -1120,7 +1213,7 @@ function getBalancePresentation(metrics, conversion = 1, unit = "tC") {
     processStatus: "待校验",
     processCopy: "碳流尚未闭合，过程排放结果暂停输出，暂不可入账。",
     action: "reset-balance",
-    buttonLabel: "恢复基准值"
+    buttonLabel: state.isDemoData ? "恢复基准值" : "清空后重填"
   };
 }
 
@@ -1132,6 +1225,7 @@ function balancePage() {
   const { input, product, waste } = state.balanceMass;
   const mappedRows = state.ledgerRows.filter((row) => row.status === "已映射").length;
   const factorRows = state.ledgerRows.filter((row) => Number(row.factor) > 0).length;
+  const ledgerCarbonEquivalent = getLedgerTotal() * CO2_TO_CARBON_FACTOR;
   const balanceMax = Math.max(2500, Math.ceil(Math.max(input, product, waste, state.balanceMass.byproductLoss) * 1.2 / 100) * 100);
   return `
     ${pageHead("Mass Balance / Boundary Integrity", "碳流天平", "基于质量守恒校验输入与输出碳流，从机制上发现漏算、重复计算与边界错误。",
@@ -1140,6 +1234,7 @@ function balancePage() {
     <div class="card balance-toolbar page-enter">
       <div class="toolbar-copy">${icon("info")} 当前边界：${escapeHtml(state.selections.product)} · ${escapeHtml(state.selections.process)} · ${escapeHtml(state.city || state.province)} · ${escapeHtml(state.projectPeriod)} · ${state.ledgerRows.length} 条活动数据</div>
       <div class="toolbar-actions">
+        <button class="button small" data-action="import-ledger-to-balance">${icon("download")} 从台账带入排放总量</button>
         <div class="segmented">
           ${["质量平衡", "CO₂当量"].map(mode => `<button class="${state.balanceMode === mode ? "active" : ""}" data-action="balance-mode" data-value="${mode}" aria-pressed="${state.balanceMode === mode}">${mode}</button>`).join("")}
         </div>
@@ -1169,6 +1264,7 @@ function balancePage() {
           <span class="balance-result-icon" aria-hidden="true">${icon(metrics.balanced ? "check" : "alert")}</span>
           <span id="balance-result-copy">${presentation.result}</span>
         </div>
+        <p class="balance-conversion-note">${icon("info")} 台账排放以 tCO₂e 记录；质量平衡输入为 tC（碳元素），换算关系为 1 tC = ${formatNumber(44 / 12, 4)} tCO₂e。当前台账约合 ${formatNumber(ledgerCarbonEquivalent, 2)} tC，带入后仍需按实际工艺拆分产品、副产品与废液固碳。</p>
         <div class="balance-controls">
           <div class="balance-control"><label>输入碳量 <strong id="input-value">${(input * conversion).toFixed(1)} ${unit}</strong></label><div class="balance-entry"><input type="number" min="0" step="0.1" data-balance-number="0" data-conversion="${conversion}" value="${(input * conversion).toFixed(1)}" aria-label="输入碳量数值"><span>${unit}</span></div><input class="range" data-balance-index="0" type="range" min="0" max="${balanceMax}" step="0.1" value="${input}" aria-label="输入碳量滑块"></div>
           <div class="balance-control"><label>产品固碳 <strong id="product-value">${(product * conversion).toFixed(1)} ${unit}</strong></label><div class="balance-entry"><input type="number" min="0" step="0.1" data-balance-number="1" data-conversion="${conversion}" value="${(product * conversion).toFixed(1)}" aria-label="产品固碳数值"><span>${unit}</span></div><input class="range" data-balance-index="1" type="range" min="0" max="${balanceMax}" step="0.1" value="${product}" aria-label="产品固碳滑块"></div>
@@ -1190,7 +1286,7 @@ function balancePage() {
             <div class="score-copy"><strong id="score-title">${presentation.title}</strong><p id="score-copy">${presentation.copy}</p></div>
           </div>
           <div class="checklist">
-            <div class="check-item"><span class="check-icon">${icon("check")}</span><div><strong>行业边界模板</strong><p>精细化工 · CMC 水媒法已匹配</p></div></div>
+            <div class="check-item"><span class="check-icon">${icon("check")}</span><div><strong>行业边界模板</strong><p>${escapeHtml(state.selections.industry || "待填写")} · ${escapeHtml(state.selections.product || "待填写")} · ${escapeHtml(state.selections.process || "待填写")}</p></div></div>
             <div class="check-item ${mappedRows === state.ledgerRows.length && state.ledgerRows.length ? "" : "warn"}"><span class="check-icon">${icon(mappedRows === state.ledgerRows.length && state.ledgerRows.length ? "check" : "alert")}</span><div><strong>活动数据覆盖</strong><p>${mappedRows} / ${state.ledgerRows.length} 项活动数据已映射</p></div></div>
             <div class="check-item ${metrics.balanced ? "" : "warn"}" id="balance-check-item"><span class="check-icon">${icon(metrics.balanced ? "check" : "alert")}</span><div><strong>碳质量闭合</strong><p id="balance-check-copy">${presentation.check}</p></div></div>
           </div>
@@ -1201,7 +1297,7 @@ function balancePage() {
             <div><span>核算结果</span><strong id="process-emissions">${metrics.balanced ? metrics.processEmissions.toFixed(1) : "—"}</strong><small>tCO₂e</small></div>
             <span id="emissions-status">${statusChip(presentation.processStatus, metrics.balanced ? "" : "warning")}</span>
           </div>
-          <p id="emissions-copy" style="margin:14px 0 0;color:#5e776c;font-size:8px;line-height:1.6">${presentation.processCopy}</p>
+          <p id="emissions-copy">${presentation.processCopy}</p>
           <button class="button wide ${metrics.balanced ? "primary" : "action-warning"}" id="balance-next" style="margin-top:17px" ${presentation.action === "next" ? 'data-route="cost"' : `data-action="${presentation.action}"`}>${presentation.buttonLabel} ${icon("arrow-right")}</button>
         </article>
       </aside>
@@ -1246,7 +1342,7 @@ function costPage() {
   const activeCostCategories = [costs.process, costs.transport, costs.electricity, costs.material].filter((cost) => cost > 0).length;
   const costParts = [costs.process, costs.transport, costs.electricity, costs.material].map((cost) => costs.total ? cost / costs.total * 100 : 0);
   const nodeInfo = {
-    total: ["CMC 产品碳成本", `全部活动 · ${state.costMethod}`, costs.total],
+    total: [`${state.selections.product || "核算产品"}碳成本`, `全部活动 · ${state.costMethod}`, costs.total],
     scope1: ["范围一 · 直接排放", "工艺与供热", costs.scope1],
     process: ["工艺过程排放", "活动台账分摊", costs.scope1 * 0.64],
     boiler: ["蒸汽与供热", "能源台账", costs.scope1 * 0.36],
@@ -1254,7 +1350,7 @@ function costPage() {
     electricity: ["外购电力", `${state.province}电力因子`, costs.electricity],
     scope3: ["范围三 · 价值链", "物流与原料", costs.scope3],
     roadRoute: [state.roadRoute, "物流运单 · 当前项目线路", costs.transport],
-    materialRoute: ["原料隐含碳", "精制棉与一氯甲烷", costs.material]
+    materialRoute: ["原料隐含碳", "采购与原料活动", costs.material]
   };
   const [detailName, detailSub, detailCost] = nodeInfo[state.selectedTreeNode] || nodeInfo.total;
   const detail = {
@@ -1264,7 +1360,7 @@ function costPage() {
     total: `¥ ${formatNumber(detailCost * 10000 / Math.max(1, state.productOutput), 0)}/t`,
     delta: state.selectedTreeNode === "roadRoute" ? methodDelta : "—"
   };
-  const roadEmissions = state.ledgerRows.filter((row) => row.name.includes("运输") || row.name.includes("物流")).reduce((sum, row) => sum + row.emissions, 0);
+  const roadEmissions = state.ledgerRows.filter((row) => classifyLedgerRow(row) === "transport").reduce((sum, row) => sum + Number(row.emissions || 0), 0);
   const routeImprovementShare = Math.min(0.8, Math.max(0, (state.roadEmissionAdjustment - state.railEmissionAdjustment) / Math.max(0.01, state.cbamIntensity + state.roadEmissionAdjustment)));
   return `
     ${pageHead("Activity-Based Costing / Traceability", "业财穿透", "把碳排放沿作业、线路与订单逐层分摊，解释每一元碳成本从哪里来。",
@@ -1288,7 +1384,7 @@ function costPage() {
             ) +
             treeNode("scope3", "范围三 · 价值链", "物流与原料", `¥ ${formatNumber(costs.scope3, 2)}万`,
               treeNode("roadRoute", escapeHtml(state.roadRoute), "当前项目运输线路", `¥ ${formatNumber(costs.transport, 2)}万`, "", methodDeltaValue > 0 ? `<span class="tree-risk">${methodDelta}</span>` : "") +
-              treeNode("materialRoute", "原料隐含碳", "精制棉与一氯甲烷", `¥ ${formatNumber(costs.material, 2)}万`)
+              treeNode("materialRoute", "原料隐含碳", "采购与原料活动", `¥ ${formatNumber(costs.material, 2)}万`)
             )
           )}
         </div>
@@ -1414,7 +1510,7 @@ function cbamPage() {
     <div class="cbam-layout page-enter">
       <article class="card simulator-card">
         <h2>出口情景参数</h2>
-        <p>参数调整后，右侧结果将实时更新。默认数据来自 EU-CMC-250601 订单。</p>
+        <p>${state.isDemoData ? "当前为演示项目，参数调整后右侧结果会实时更新。" : "请按实际出口订单和核算口径填写，右侧结果会实时更新。"}</p>
         <div class="field">
           <label>出口欧盟数量 <strong id="volume-value">${state.cbamVolume} t</strong></label>
           <input id="cbam-volume" type="number" min="0" step="0.01" value="${state.cbamVolume}" aria-label="出口欧盟数量">
@@ -1475,7 +1571,15 @@ function reportPage() {
   const balance = getBalanceMetrics();
   const mappedRows = state.ledgerRows.filter((row) => row.status !== "待确认").length;
   const dataCompleteness = state.ledgerRows.length ? mappedRows / state.ledgerRows.length * 100 : 0;
-  const intensity = reportTotal / Math.max(1, state.productOutput);
+  const intensity = state.productOutput > 0 ? reportTotal / state.productOutput : null;
+  const reportLocation = [state.province, state.city].filter(Boolean).join(" / ") || "地区待填写";
+  const reportOrganization = state.organization || "企业待填写";
+  const reportProduct = state.selections.product || "产品待填写";
+  const reportProcess = state.selections.process || "工艺待填写";
+  const reportIndustry = state.selections.industry || "行业待填写";
+  const reportRows = state.ledgerRows.length
+    ? state.ledgerRows.map((row) => `<tr><td><strong>${escapeHtml(row.name || "未命名数据")}</strong></td><td>${formatNumber(row.amount, 2)} ${escapeHtml(row.unit)}</td><td>${formatNumber(row.factor, 4)} ${escapeHtml(row.factorUnit)}</td><td>${formatNumber(row.emissions)}</td><td>${escapeHtml(row.source || "未填写")}</td></tr>`).join("")
+    : `<tr><td class="report-empty-row" colspan="5">尚未录入活动数据，本报告仅展示项目边界与参数占位。</td></tr>`;
   const generatedAt = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const reportCode = `CPR-${String(state.projectPeriod).replace(/[^0-9A-Za-z\u4e00-\u9fa5]/g, "").slice(0, 10)}-${String(activeProjectId || "LOCAL").slice(-4).toUpperCase()}`;
   return `
@@ -1501,10 +1605,10 @@ function reportPage() {
         <div class="report-title">
           <p>Product carbon footprint disclosure</p>
           <h2>${escapeHtml(state.projectName)} · 产品碳足迹核算报告</h2>
-          <span>${escapeHtml(state.city || state.province)} · ${escapeHtml(state.selections.process)} · 报告周期 ${escapeHtml(state.projectPeriod)}</span>
+          <span>${escapeHtml(reportLocation)} · ${escapeHtml(reportProcess)} · 报告周期 ${escapeHtml(state.projectPeriod)}</span>
         </div>
         <section class="report-summary">
-          <div class="report-summary-item"><span>产品碳足迹</span><strong>${formatNumber(intensity, 2)} <small>tCO₂e/t</small></strong></div>
+          <div class="report-summary-item"><span>产品碳足迹</span><strong>${intensity === null ? "待填写" : formatNumber(intensity, 2)} <small>${intensity === null ? "t" : "tCO₂e/t"}</small></strong></div>
           <div class="report-summary-item"><span>本期总排放</span><strong>${formatNumber(reportTotal, 1)} <small>tCO₂e</small></strong></div>
           <div class="report-summary-item"><span>碳流闭合度</span><strong>${balance.balanced ? "100.0" : balance.completeness.toFixed(1)} <small>%</small></strong></div>
           <div class="report-summary-item"><span>数据匹配率</span><strong>${dataCompleteness.toFixed(1)} <small>%</small></strong></div>
@@ -1513,23 +1617,26 @@ function reportPage() {
         <section class="report-section">
           <div class="report-section-head"><h2>核算主体与边界</h2></div>
           <div class="report-info-grid">
-            <div class="report-info-row"><span>核算主体</span><strong>${escapeHtml(state.organization)}</strong></div>
+            <div class="report-info-row"><span>核算主体</span><strong>${escapeHtml(reportOrganization)}</strong></div>
             <div class="report-info-row"><span>统一社会信用代码</span><strong>${escapeHtml(state.organizationCode || "未填写")}</strong></div>
-            <div class="report-info-row"><span>行业类别</span><strong>${escapeHtml(state.selections.industry)}</strong></div>
+            <div class="report-info-row"><span>所在地区</span><strong>${escapeHtml(reportLocation)}</strong></div>
+            <div class="report-info-row"><span>行业类别</span><strong>${escapeHtml(reportIndustry)}</strong></div>
             <div class="report-info-row"><span>系统边界</span><strong>摇篮到大门</strong></div>
-            <div class="report-info-row"><span>核算产品</span><strong>${escapeHtml(state.selections.product)}</strong></div>
+            <div class="report-info-row"><span>核算产品</span><strong>${escapeHtml(reportProduct)}</strong></div>
+            <div class="report-info-row"><span>核心工艺</span><strong>${escapeHtml(reportProcess)}</strong></div>
             <div class="report-info-row"><span>核算标准</span><strong>ISO 14067:2018 / 企业标准</strong></div>
           </div>
         </section>
 
         <section class="report-section">
           <div class="report-section-head"><h2>排放活动数据摘要</h2></div>
-          <table class="report-table">
-            <thead><tr><th>活动数据</th><th>数量</th><th>排放因子</th><th>排放量 (tCO₂e)</th><th>数据来源</th></tr></thead>
-            <tbody>
-              ${state.ledgerRows.slice(0, 5).map(row => `<tr><td><strong>${escapeHtml(row.name)}</strong></td><td>${formatNumber(row.amount, 2)} ${escapeHtml(row.unit)}</td><td>${row.factor} ${escapeHtml(row.factorUnit)}</td><td>${formatNumber(row.emissions)}</td><td>${escapeHtml(row.source)}</td></tr>`).join("")}
-            </tbody>
-          </table>
+          <p class="table-scroll-hint" role="note">左右滑动查看全部字段。</p>
+          <div class="table-wrap report-table-wrap" tabindex="0" aria-label="活动数据摘要表，可左右滚动">
+            <table class="report-table">
+              <thead><tr><th>活动数据</th><th>数量</th><th>排放因子</th><th>排放量 (tCO₂e)</th><th>数据来源</th></tr></thead>
+              <tbody>${reportRows}</tbody>
+            </table>
+          </div>
           <div class="report-check-line"><span class="check-icon">${icon(balance.balanced ? "check" : "alert")}</span><span><strong>${balance.balanced ? "碳质量平衡校验通过。" : "碳质量平衡校验未通过。"}</strong> 输入原料碳 ${formatNumber(balance.input, 1)} tC，输出固碳 ${formatNumber(balance.output, 1)} tC，质量差异 ${formatNumber(Math.abs(balance.difference), 1)} tC。</span></div>
         </section>
 
@@ -1550,8 +1657,21 @@ function reportPage() {
             <div class="report-info-row"><span>${escapeHtml(state.province)}电力平均排放因子</span><strong>${state.electricityFactor} kgCO₂/kWh</strong></div>
             <div class="report-info-row"><span>欧盟 EUA 碳价参数</span><strong>€ ${state.cbamEuPrice.toFixed(2)}/t · ${formatCnyEquivalent(state.cbamEuPrice)}/t · ${escapeHtml(state.dataAsOf)}</strong></div>
             <div class="report-info-row"><span>电力因子来源</span><strong>${escapeHtml(state.electricityFactorSource)}</strong></div>
-            <div class="report-info-row"><span>核算产品产量</span><strong>${formatNumber(state.productOutput, 2)} t</strong></div>
+            <div class="report-info-row"><span>核算产品产量</span><strong>${state.productOutput > 0 ? `${formatNumber(state.productOutput, 2)} t` : "待填写"}</strong></div>
             <div class="report-info-row"><span>高碳运输线路</span><strong>${escapeHtml(state.roadRoute)}</strong></div>
+            <div class="report-info-row"><span>数据截止日期</span><strong>${escapeHtml(state.dataAsOf || "未填写")}</strong></div>
+          </div>
+        </section>
+
+        <section class="report-section">
+          <div class="report-section-head"><h2>CBAM 出口情景参数</h2></div>
+          <div class="report-info-grid">
+            <div class="report-info-row"><span>出口欧盟数量</span><strong>${formatNumber(state.cbamVolume, 2)} t</strong></div>
+            <div class="report-info-row"><span>产品综合碳强度</span><strong>${formatNumber(state.cbamIntensity, 2)} tCO₂e/t</strong></div>
+            <div class="report-info-row"><span>免费配额抵扣</span><strong>${formatNumber(state.cbamFreeAllocation, 1)}%</strong></div>
+            <div class="report-info-row"><span>运输方案</span><strong>${state.selectedRoute === "rail" ? escapeHtml(state.railRoute) : escapeHtml(state.roadRoute)}</strong></div>
+            <div class="report-info-row"><span>欧盟 EUA 碳价</span><strong>€ ${formatNumber(state.cbamEuPrice, 2)}/t · ${formatCnyEquivalent(state.cbamEuPrice)}/t</strong></div>
+            <div class="report-info-row"><span>人民币汇率参考</span><strong>${escapeHtml(EUR_CNY_NOTE)}</strong></div>
           </div>
         </section>
 
@@ -1563,7 +1683,7 @@ function reportPage() {
         <footer class="report-footer">
           <span>碳路先锋 · 业财碳智能核算中枢</span>
           <span>本报告由系统自动生成 · 数据可追溯至原始业务单据</span>
-          <span class="report-author">网页作者：罗鑫及其团队 · Oliver Ellis Voss &amp; Team · 重庆理工大学 2025级本科</span>
+          <span class="report-author">网页作者：罗鑫及其团队 · Oliver Ellis Voss &amp; Team · 重庆理工大学 2025级本科 · 联系与反馈 xluo0246@gmail.com</span>
         </footer>
       </article>
     </div>
@@ -1592,7 +1712,7 @@ function render(options = {}) {
     if (active) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   });
-  document.getElementById("ledger-dot")?.classList.toggle("complete", state.ledgerLoaded);
+  document.getElementById("ledger-dot")?.classList.toggle("complete", state.ledgerRows.length > 0);
   if (!options.preserveScroll) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1605,6 +1725,10 @@ function render(options = {}) {
 
 function navigate(route) {
   if (!pageRenderers[route]) return;
+  if (route === "balance" && !state.ledgerRows.length) {
+    showToast("暂时不能进入碳流校验", "请先在数据台账中新增或导入至少一项活动数据");
+    route = "ledger";
+  }
   state.route = route;
   if (window.location.hash !== `#${route}`) {
     history.pushState(null, "", `#${route}`);
@@ -1793,6 +1917,16 @@ function updateCBAMDom() {
 }
 
 function bindPageEvents() {
+  document.querySelectorAll(".wizard-field input").forEach((input) => {
+    input.setAttribute("aria-describedby", "wizard-validation");
+    input.addEventListener("input", () => clearWizardValidation(input));
+    input.addEventListener("blur", () => {
+      if (!input.required || input.value.trim()) return;
+      const label = input.closest("label")?.querySelector("span")?.textContent?.replace(/\s*（.*?）/g, "") || "必填项";
+      showWizardValidation({ valid: false, fieldId: input.id, message: `请填写${label}。` });
+    });
+  });
+
   document.querySelectorAll("[data-select]").forEach((option) => {
     option.addEventListener("click", () => {
       const field = option.dataset.select;
@@ -1827,48 +1961,38 @@ function bindPageEvents() {
     });
   });
 
-  const volume = document.getElementById("cbam-volume");
-  if (volume) {
-    volume.addEventListener("input", () => {
-      state.cbamVolume = Number(volume.value);
+  const bindCBAMNumber = (input, key, label) => {
+    if (!input) return;
+    const commit = (correctVisual = false) => {
+      const raw = input.value.trim();
+      const numeric = raw === "" ? 0 : Number(raw);
+      const invalid = raw !== "" && (!Number.isFinite(numeric) || numeric < 0);
+      state[key] = clampNumber(numeric, 0);
       state.cbamApplied = state.selectedRoute === "rail";
       markProjectActive();
-      scheduleCBAMPaint();
+      input.toggleAttribute("aria-invalid", invalid);
+      if (correctVisual && invalid) input.value = String(state[key]);
+      updateCBAMDom();
       schedulePersist();
+      return invalid;
+    };
+    input.addEventListener("input", () => commit());
+    input.addEventListener("change", () => {
+      if (commit(true)) showToast("参数已自动修正", `${label}不能为负数，已调整为 0。`);
+      flushPersist();
     });
-    volume.addEventListener("change", flushPersist);
-  }
+  };
 
-  const intensity = document.getElementById("cbam-intensity");
-  if (intensity) {
-    intensity.addEventListener("input", () => {
-      state.cbamIntensity = Number(intensity.value);
-      state.cbamApplied = state.selectedRoute === "rail";
-      markProjectActive();
-      scheduleCBAMPaint();
-      schedulePersist();
-    });
-    intensity.addEventListener("change", flushPersist);
-  }
-
-  const price = document.getElementById("cbam-price");
-  if (price) {
-    price.addEventListener("input", () => {
-      state.cbamEuPrice = Number(price.value);
-      state.cbamApplied = state.selectedRoute === "rail";
-      markProjectActive();
-      scheduleCBAMPaint();
-      schedulePersist();
-    });
-    price.addEventListener("change", flushPersist);
-  }
+  bindCBAMNumber(document.getElementById("cbam-volume"), "cbamVolume", "出口欧盟数量");
+  bindCBAMNumber(document.getElementById("cbam-intensity"), "cbamIntensity", "产品综合碳强度");
+  bindCBAMNumber(document.getElementById("cbam-price"), "cbamEuPrice", "欧盟碳价");
 
   const freeAllocation = document.getElementById("cbam-free-allocation");
   if (freeAllocation) {
     freeAllocation.addEventListener("input", () => {
-      state.cbamFreeAllocation = Number(freeAllocation.value);
+      state.cbamFreeAllocation = clampNumber(freeAllocation.value, 0, 100);
       markProjectActive();
-      scheduleCBAMPaint();
+      updateCBAMDom();
       schedulePersist();
     });
     freeAllocation.addEventListener("change", flushPersist);
@@ -1972,10 +2096,10 @@ function bindPageEvents() {
       else flushPersist();
     });
   };
-  bindWizardText("organization-input", "organization", false, "未命名企业");
+  bindWizardText("organization-input", "organization");
   bindWizardText("organization-code-input", "organizationCode");
   bindWizardText("city-input", "city");
-  bindWizardText("data-as-of-input", "dataAsOf", false, DATA_AS_OF);
+  bindWizardText("data-as-of-input", "dataAsOf");
   bindWizardText("road-route-input", "roadRoute", false, "原料地 → 工厂 · 公路运输");
   bindWizardText("rail-route-input", "railRoute", false, "工厂 → 港口 · 公转铁联运");
 
@@ -1998,12 +2122,24 @@ function bindPageEvents() {
 
   const industryInput = document.getElementById("industry-input");
   if (industryInput) {
+    industryInput.addEventListener("input", () => {
+      state.selections.industry = industryInput.value.trim();
+      schedulePersist(240);
+    });
     industryInput.addEventListener("change", () => {
-      state.selections.industry = industryInput.value.trim() || "其他制造业";
+      state.selections.industry = industryInput.value.trim();
+      if (!state.selections.industry) {
+        flushPersist();
+        return;
+      }
       const products = PRODUCT_CATALOG[state.selections.industry] || ["自定义产品"];
       const processes = PROCESS_CATALOG[state.selections.industry] || ["自定义工艺"];
-      if (!products.includes(state.selections.product)) state.selections.product = products[0];
-      if (!processes.includes(state.selections.process)) state.selections.process = processes[0];
+      if (PRODUCT_CATALOG[state.selections.industry] && !products.includes(state.selections.product)) {
+        state.selections.product = products[0];
+      }
+      if (PROCESS_CATALOG[state.selections.industry] && !processes.includes(state.selections.process)) {
+        state.selections.process = processes[0];
+      }
       flushPersist();
     });
   }
@@ -2011,7 +2147,7 @@ function bindPageEvents() {
   const productInput = document.getElementById("product-input");
   if (productInput) {
     productInput.addEventListener("input", () => {
-      state.selections.product = productInput.value.trim() || "自定义产品";
+      state.selections.product = productInput.value.trim();
       schedulePersist(240);
     });
     productInput.addEventListener("change", flushPersist);
@@ -2020,35 +2156,55 @@ function bindPageEvents() {
   const processInput = document.getElementById("process-input");
   if (processInput) {
     processInput.addEventListener("input", () => {
-      state.selections.process = processInput.value.trim() || "自定义工艺";
+      state.selections.process = processInput.value.trim();
       schedulePersist(240);
     });
     processInput.addEventListener("change", flushPersist);
   }
 
-  const bindWizardNumber = (id, key, callback) => {
+  const bindWizardNumber = (id, key, { min = 0, max = Number.POSITIVE_INFINITY, callback } = {}) => {
     const input = document.getElementById(id);
     if (!input) return;
-    input.addEventListener("input", () => {
-      state[key] = Number(input.value) || 0;
+    const commit = (correctVisual = false) => {
+      const raw = input.value.trim();
+      const numeric = raw === "" ? null : Number(raw);
+      const invalid = numeric !== null && (!Number.isFinite(numeric) || numeric < min || numeric > max);
+      state[key] = numeric === null || !Number.isFinite(numeric)
+        ? (min > 0 ? min : 0)
+        : clampNumber(numeric, min, max);
+      input.toggleAttribute("aria-invalid", invalid);
+      if (correctVisual && invalid) input.value = String(state[key]);
       callback?.();
+    };
+    input.addEventListener("input", () => {
+      commit();
       schedulePersist(240);
     });
-    input.addEventListener("change", flushPersist);
+    input.addEventListener("change", () => {
+      const raw = input.value.trim();
+      const numeric = Number(raw);
+      const corrected = raw !== "" && (!Number.isFinite(numeric) || numeric < min || numeric > max);
+      commit(true);
+      if (corrected) {
+        const label = input.closest("label")?.querySelector("span")?.textContent || "数值";
+        showToast("参数已自动修正", `${label}已调整到允许范围 ${formatNumber(min, min % 1 ? 2 : 0)}–${Number.isFinite(max) ? formatNumber(max, max % 1 ? 1 : 0) : "不限"}。`);
+      }
+      flushPersist();
+    });
   };
-  bindWizardNumber("product-output-input", "productOutput", () => {
+  bindWizardNumber("product-output-input", "productOutput", { min: 0.01, callback: () => {
     state.cbamIntensity = getLedgerTotal() / Math.max(1, state.productOutput);
-  });
+  }});
   bindWizardNumber("electricity-factor-input", "electricityFactor");
   bindWizardNumber("carbon-price-input", "carbonPrice");
-  bindWizardNumber("eua-price-input", "cbamEuPrice", () => {
+  bindWizardNumber("eua-price-input", "cbamEuPrice", { callback: () => {
     const equivalent = document.getElementById("eua-price-cny");
     if (equivalent) equivalent.textContent = `${formatCnyEquivalent(state.cbamEuPrice)}/t · ${EUR_CNY_NOTE}`;
-  });
+  }});
   bindWizardNumber("transport-distance-input", "transportDistance");
-  bindWizardNumber("free-allocation-input", "cbamFreeAllocation");
-  bindWizardNumber("road-adjustment-input", "roadEmissionAdjustment");
-  bindWizardNumber("rail-adjustment-input", "railEmissionAdjustment");
+  bindWizardNumber("free-allocation-input", "cbamFreeAllocation", { min: 0, max: 100 });
+  bindWizardNumber("road-adjustment-input", "roadEmissionAdjustment", { min: Number.NEGATIVE_INFINITY, max: Number.POSITIVE_INFINITY });
+  bindWizardNumber("rail-adjustment-input", "railEmissionAdjustment", { min: Number.NEGATIVE_INFINITY, max: Number.POSITIVE_INFINITY });
 
   document.querySelectorAll("[data-ledger-field]").forEach((input) => {
     input.addEventListener("input", () => {
@@ -2084,7 +2240,7 @@ function bindPageEvents() {
       const totalElement = document.querySelector("[data-ledger-total]");
       if (totalElement) totalElement.textContent = `${formatNumber(getLedgerTotal())} tCO₂e`;
       const countText = document.querySelector("[data-ledger-count-text]");
-      if (countText) countText.textContent = `${state.ledgerRows.length} 项活动数据 · ${state.ledgerRows.filter((item) => item.status === "待确认").length} 项需人工确认 · 修改后自动保存`;
+      if (countText) countText.textContent = `${state.ledgerRows.length} 项活动数据 · ${state.ledgerRows.filter((item) => item.status === "待确认").length} 项需人工确认 · 修改后自动保存在本机`;
       refreshLedgerSourceCards();
       state.ledgerLoaded = true;
       state.cbamIntensity = getLedgerTotal() / Math.max(1, state.productOutput);
@@ -2131,7 +2287,7 @@ function loadLedgerRows(rows, filename, isDemo = false) {
   render({ preserveScroll: true });
   document.getElementById("ledger-dot")?.classList.add("complete");
   const total = getLedgerTotal();
-  showToast("最新数据已载入", `${filename} · ${rows.length} 项活动数据，合计 ${formatNumber(total)} tCO₂e`);
+  showToast(isDemo ? "示例台账已载入" : "项目台账已载入", `${filename} · ${rows.length} 项活动数据，合计 ${formatNumber(total)} tCO₂e`);
 }
 
 function simulateLedger(filename = "2026-10-22 公开参数基准.csv") {
@@ -2311,7 +2467,7 @@ async function shareReportLink() {
       input.remove();
       shared = true;
     }
-    showToast("报告快照链接已准备好", "链接包含当前演示数据，可直接发送给审阅人");
+    showToast("报告快照链接已准备好", "链接包含当前项目数据快照，可直接发送给审阅人");
   } catch {
     showToast("分享链接", url);
   }
@@ -2347,7 +2503,7 @@ function closeSearch(restoreFocus = true) {
 function getSearchItems() {
   return [
     { icon: "scale", title: "碳流平衡校验", detail: "查看边界闭合状态与异常碳流", route: "balance" },
-    { icon: "tree", title: "EU-CMC-250601", detail: "出口欧盟 CMC 订单 · 当前成本穿透", route: "cost" },
+    { icon: "tree", title: state.projectName, detail: `${state.selections.product || "当前产品"} · 成本穿透`, route: "cost" },
     { icon: "globe", title: "CBAM 关税模拟", detail: `${state.dataAsOf} · 当前项目参数`, route: "cbam" },
     { icon: "report", title: "核算报告", detail: "正式版 V2.4 · 可打印与分享", route: "report" },
     ...state.ledgerRows.map((row) => ({
@@ -2398,7 +2554,7 @@ function openAI() {
   document.body.style.overflow = "hidden";
   document.getElementById("topbar-ai").setAttribute("aria-expanded", "true");
   document.getElementById("ai-launcher").setAttribute("aria-expanded", "true");
-  const roadEmissions = state.ledgerRows.filter((row) => row.name.includes("运输") || row.name.includes("物流")).reduce((sum, row) => sum + row.emissions, 0);
+  const roadEmissions = state.ledgerRows.filter((row) => classifyLedgerRow(row) === "transport").reduce((sum, row) => sum + Number(row.emissions || 0), 0);
   const improvement = Math.min(0.8, Math.max(0, (state.roadEmissionAdjustment - state.railEmissionAdjustment) / Math.max(0.01, state.cbamIntensity + state.roadEmissionAdjustment)));
   document.getElementById("ai-intro").textContent = `已读取「${state.projectName}」的 ${state.ledgerRows.length} 项活动数据和当前核算参数。需要我检查高碳运输线路或生成降碳建议吗？`;
   document.getElementById("ai-road-label").textContent = roadEmissions > 0 ? state.roadRoute : "当前尚未录入物流数据";
@@ -2472,7 +2628,7 @@ function closeMobileMenu(restoreFocus = true) {
 function getAIResponse(prompt) {
   const balance = getBalanceMetrics();
   const costs = getCostMetrics();
-  const roadEmissions = state.ledgerRows.filter((row) => row.name.includes("运输") || row.name.includes("物流")).reduce((sum, row) => sum + row.emissions, 0);
+  const roadEmissions = state.ledgerRows.filter((row) => classifyLedgerRow(row) === "transport").reduce((sum, row) => sum + Number(row.emissions || 0), 0);
   const routeImprovementShare = Math.min(0.8, Math.max(0, (state.roadEmissionAdjustment - state.railEmissionAdjustment) / Math.max(0.01, state.cbamIntensity + state.roadEmissionAdjustment)));
   if (prompt === "为什么碳流不平衡？") {
     return balance.balanced
@@ -2549,6 +2705,14 @@ document.addEventListener("click", (event) => {
       deleteProject(actionElement.dataset.id);
       break;
     case "wizard-next":
+      {
+        const validation = getWizardStepValidation(state.wizardStep);
+        if (!validation.valid) {
+          showWizardValidation(validation);
+          showToast("请完善当前步骤", validation.message);
+          break;
+        }
+      }
       state.wizardStep = Math.min(3, state.wizardStep + 1);
       render();
       break;
@@ -2557,6 +2721,18 @@ document.addEventListener("click", (event) => {
       render();
       break;
     case "generate-boundary":
+      {
+        const failedStep = [1, 2, 3]
+          .map((step) => ({ step, validation: getWizardStepValidation(step) }))
+          .find(({ validation }) => !validation.valid);
+        if (failedStep) {
+          state.wizardStep = failedStep.step;
+          render({ preserveScroll: true });
+          requestAnimationFrame(() => showWizardValidation(failedStep.validation));
+          showToast(`请完善第 ${failedStep.step} 步`, failedStep.validation.message);
+          break;
+        }
+      }
       state.projectStatus = "active";
       state.ledgerLoaded = true;
       persistState();
@@ -2573,7 +2749,15 @@ document.addEventListener("click", (event) => {
     case "pick-file":
       document.getElementById("file-input")?.click();
       break;
+    case "download-ledger-template":
+      downloadCsv("碳路先锋_活动台账模板.csv", [
+        ["name", "source", "amount", "unit", "factor", "factor_unit", "emissions", "status"],
+        ["示例：外购电力（请替换）", "电费单", "1284.6", "MWh", String(state.electricityFactor), "tCO₂e/MWh", "", "待确认"]
+      ]);
+      showToast("CSV 模板已下载", "请替换示例行，保存为 UTF-8 CSV 后再导入");
+      break;
     case "load-demo":
+      if (state.ledgerRows.length && !window.confirm(`当前台账已有 ${state.ledgerRows.length} 项数据。载入示例台账会替换现有内容，且不会自动恢复。建议先导出活动数据。是否继续？`)) break;
       simulateLedger();
       break;
     case "add-source-data": {
@@ -2636,8 +2820,30 @@ document.addEventListener("click", (event) => {
       break;
     }
     case "go-balance":
-      if (state.ledgerLoaded) navigate("balance");
+      if (!state.ledgerRows.length) {
+        showToast("暂时不能进入碳流校验", "请先新增或导入至少一项活动数据");
+        break;
+      }
+      navigate("balance");
       break;
+    case "import-ledger-to-balance": {
+      if (!state.ledgerRows.length) {
+        showToast("没有可带入的台账", "请先在数据台账中新增或导入活动数据");
+        break;
+      }
+      const carbonMass = getLedgerTotal() * CO2_TO_CARBON_FACTOR;
+      state.balanceMass = {
+        input: Number(carbonMass.toFixed(4)),
+        product: Number(carbonMass.toFixed(4)),
+        waste: 0,
+        byproductLoss: 0
+      };
+      state.includeWasteCarbon = false;
+      markProjectActive();
+      render({ preserveScroll: true });
+      showToast("已带入台账排放总量", "已换算为 tC 并作为输入/产品起始值，请按工艺实际拆分副产品与废液固碳。");
+      break;
+    }
     case "balance-mode":
       state.balanceMode = value;
       render({ preserveScroll: true });
@@ -2663,7 +2869,10 @@ document.addEventListener("click", (event) => {
       } else {
         resetBalanceValues();
         render({ preserveScroll: true });
-        showToast("已恢复基准数据", "当前差异超出废液可补录范围，请按原始台账修正");
+        showToast(
+          state.isDemoData ? "已恢复基准数据" : "碳流数据已清空",
+          state.isDemoData ? "当前差异超出废液可补录范围，请按原始台账修正" : "当前差异超出自动补录范围，请按原始台账重新填写输入与输出碳流"
+        );
       }
       break;
     }
@@ -2677,7 +2886,10 @@ document.addEventListener("click", (event) => {
       markProjectActive();
       resetBalanceValues();
       render({ preserveScroll: true });
-      showToast("已恢复基准数据", "输入、产品和废液碳流已恢复到可校验状态");
+      showToast(
+        state.isDemoData ? "已恢复基准数据" : "碳流数据已清空",
+        state.isDemoData ? "输入、产品和废液碳流已恢复到可校验状态" : "请按原始台账重新填写输入碳、产品固碳、副产品固碳和废液固碳"
+      );
       break;
     case "cost-method":
       markProjectActive();
@@ -2711,7 +2923,7 @@ document.addEventListener("click", (event) => {
         ["工艺过程排放", costs.process.toFixed(2), "万元", ""],
         ["运输作业", costs.transport.toFixed(2), "万元", state.roadRoute],
         ["外购电力", costs.electricity.toFixed(2), "万元", `${state.province}因子 ${state.electricityFactor}`],
-        ["原料隐含碳", costs.material.toFixed(2), "万元", "精制棉与一氯甲烷"],
+        ["原料隐含碳", costs.material.toFixed(2), "万元", "采购与原料活动"],
         [],
         ["台账数据项", "排放量", "单位", "来源"],
         ...state.ledgerRows.map((row) => [row.name, row.emissions.toFixed(2), "tCO₂e", row.source])
