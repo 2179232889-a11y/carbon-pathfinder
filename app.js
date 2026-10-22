@@ -9,6 +9,7 @@ const PRODUCT_OUTPUT_T = 787;
 const CO2_TO_CARBON_FACTOR = 12 / 44;
 const PROJECTS_STORAGE_KEY = "carbon-pathfinder-projects-v2";
 const LEGACY_STORAGE_KEY = "carbon-pathfinder-demo-v1";
+const DEMO_PROJECT_ID = "demo-cmc-2026-q4";
 
 const PROVINCE_FACTORS = {
   "全国": 0.5306,
@@ -388,6 +389,76 @@ function applyProject(project) {
   });
 }
 
+function createDemoProjectRecord() {
+  const now = new Date().toISOString();
+  return {
+    id: DEMO_PROJECT_ID,
+    projectName: "演示示例 · CMC 2026 Q4",
+    projectPeriod: ACCOUNTING_PERIOD,
+    dataAsOf: DATA_AS_OF,
+    projectStatus: "ready",
+    isDemoData: true,
+    createdAt: "2026-10-22T00:00:00.000Z",
+    updatedAt: now,
+    organization: "重庆碳路新材料有限公司",
+    organizationCode: "91500000MA7XXXXX8Q",
+    province: "重庆",
+    city: "重庆",
+    productOutput: PRODUCT_OUTPUT_T,
+    carbonPrice: CN_CARBON_PRICE,
+    electricityFactor: CQ_ELECTRICITY_FACTOR,
+    electricityFactorSource: "生态环境部 2023 年重庆省级电力平均排放因子",
+    roadRoute: "原料地 → 工厂 · 公路运输",
+    railRoute: "工厂 → 港口 · 公转铁联运",
+    transportDistance: 420,
+    wizardStep: 3,
+    selections: {
+      industry: "精细化工",
+      product: "CMC羧甲基纤维素钠",
+      process: "水媒法"
+    },
+    ledgerLoaded: true,
+    ledgerRows: SEED_LEDGER_ROWS.map((row) => ({ ...row })),
+    balanceMass: {
+      input: 1613.2,
+      product: 1286.7,
+      waste: 186.4,
+      byproductLoss: 140.1
+    },
+    includeWasteCarbon: true,
+    balanceMode: "质量平衡",
+    costMethod: "按重量",
+    selectedRoute: "road",
+    cbamVolume: 820,
+    cbamEuPrice: EUA_PRICE,
+    cbamIntensity: 2.15,
+    cbamFreeAllocation: 70,
+    roadEmissionAdjustment: 0.23,
+    railEmissionAdjustment: -0.18,
+    cbamApplied: false
+  };
+}
+
+function ensureDemoProject(activateWhenEmpty = true) {
+  let demo = projects.find((project) => project.isDemoData === true);
+  if (!demo) {
+    demo = createDemoProjectRecord();
+    projects.unshift(demo);
+  } else {
+    demo.isDemoData = true;
+    if (!String(demo.projectName || "").startsWith("演示示例")) {
+      demo.projectName = `演示示例 · ${demo.projectName || "CMC 2026 Q4"}`;
+    }
+  }
+  if (activateWhenEmpty && !activeProjectId) {
+    activeProjectId = demo.id;
+    applyProject(demo);
+  } else if (activeProjectId === demo.id) {
+    state.projectName = demo.projectName;
+  }
+  return demo;
+}
+
 function saveActiveProject() {
   if (!activeProjectId) {
     activeProjectId = `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -580,20 +651,28 @@ function duplicateProject(id) {
   const now = new Date().toISOString();
   const copy = JSON.parse(JSON.stringify(source));
   copy.id = `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  copy.projectName = uniqueProjectName(`${source.projectName} 副本`);
+  copy.isDemoData = false;
+  copy.projectName = uniqueProjectName(`${String(source.projectName || "核算项目").replace(/^演示示例 · /, "")} 副本`);
   copy.createdAt = now;
   copy.updatedAt = now;
   projects.unshift(copy);
   activeProjectId = copy.id;
   applyProject(copy);
   persistState();
-  showToast("项目已复制", `已创建「${copy.projectName}」，原项目保持不变`);
+  showToast(
+    source.isDemoData ? "示例已复制为独立项目" : "项目已复制",
+    `已创建「${copy.projectName}」，${source.isDemoData ? "可直接修改，原演示示例保持不变" : "原项目保持不变"}`
+  );
   navigate("projects");
 }
 
 function deleteProject(id) {
   const project = projects.find((item) => item.id === id);
   if (!project) return;
+  if (project.isDemoData) {
+    showToast("演示示例需保留", "可先复制成独立项目，再按真实业务修改");
+    return;
+  }
   const confirmed = window.confirm(`确认删除「${project.projectName}」？此操作无法恢复。`);
   if (!confirmed) return;
   projects = projects.filter((item) => item.id !== id);
@@ -759,13 +838,16 @@ function dashboardPage() {
 
 function projectsPage() {
   saveActiveProject();
-  const sortedProjects = [...projects].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+  const sortedProjects = [...projects].sort((a, b) =>
+    Number(Boolean(b.isDemoData)) - Number(Boolean(a.isDemoData))
+      || new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)
+  );
   const statusNames = { draft: "填报中", active: "核算中", ready: "已完成" };
   return `
     ${pageHead(
       "Calculation Workspace",
       "核算项目",
-      "每次新建都会保存为一个独立项目，台账、边界、成本和 CBAM 情景互不覆盖。",
+      "每次新建都会保存为独立项目；内置演示示例可直接打开体验，不会覆盖已保存的真实项目。",
       `<button class="button" data-action="import-projects">${icon("upload")} 导入备份</button>
        <button class="button" data-action="export-projects">${icon("download")} 导出备份</button>
        <button class="button primary" data-action="new-project">${icon("plus")} 新建核算项目</button>`
@@ -782,10 +864,10 @@ function projectsPage() {
         ${sortedProjects.map((project) => {
           const active = project.id === activeProjectId;
           const total = (project.ledgerRows || []).reduce((sum, row) => sum + Number(row.emissions || 0), 0);
-          return `<article class="card project-card ${active ? "active" : ""}" ${active ? 'aria-current="true"' : ""}>
+          return `<article class="card project-card ${active ? "active" : ""} ${project.isDemoData ? "demo" : ""}" ${active ? 'aria-current="true"' : ""}>
             <div class="project-card-head">
               <div>
-                <span class="project-period">${escapeHtml(project.projectPeriod || ACCOUNTING_PERIOD)}</span>
+                <span class="project-period">${project.isDemoData ? "演示示例 · " : ""}${escapeHtml(project.projectPeriod || ACCOUNTING_PERIOD)}</span>
                 <h2>${escapeHtml(project.projectName || "未命名项目")}</h2>
               </div>
               ${statusChip(statusNames[project.projectStatus] || "填报中", project.projectStatus === "draft" ? "warning" : "")}
@@ -797,9 +879,9 @@ function projectsPage() {
               <div><span>最近更新</span><strong>${formatProjectTime(project.updatedAt)}</strong></div>
             </div>
             <div class="project-actions">
-              <button class="button small primary" data-action="open-project" data-id="${project.id}">${active ? "返回项目总览" : "打开项目"}</button>
+              <button class="button small primary" data-action="open-project" data-id="${project.id}">${active ? "返回项目总览" : project.isDemoData ? "打开演示" : "打开项目"}</button>
               <button class="button small ghost" data-action="duplicate-project" data-id="${project.id}">${icon("report")} 复制</button>
-              <button class="button small ghost danger" data-action="delete-project" data-id="${project.id}">删除</button>
+              ${project.isDemoData ? "" : `<button class="button small ghost danger" data-action="delete-project" data-id="${project.id}">删除</button>`}
             </div>
           </article>`;
         }).join("")}
@@ -3075,7 +3157,9 @@ const initialRoute = window.location.hash.slice(1);
 if (pageRenderers[initialRoute]) {
   state.route = initialRoute;
 }
+const hasSharedSnapshot = new URLSearchParams(window.location.search).has("share");
 restoreState();
+ensureDemoProject(!hasSharedSnapshot);
 syncMobileNavigation();
 render();
 syncMobileNavigation();

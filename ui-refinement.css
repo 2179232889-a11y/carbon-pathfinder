@@ -995,6 +995,14 @@ textarea::placeholder,
   border-color: rgba(35, 217, 150, 0.42);
 }
 
+.project-card.demo:not(.active) {
+  border-color: rgba(89, 190, 194, 0.3);
+}
+
+.project-card.demo .project-period {
+  color: var(--cyan);
+}
+
 .project-card-head {
   display: flex;
   align-items: flex-start;
