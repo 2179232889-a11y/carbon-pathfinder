@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#050a10">
+  <meta name="author" content="罗鑫及其团队 (Oliver Ellis Voss & Team)">
+  <meta name="designer" content="罗鑫及其团队 (Oliver Ellis Voss & Team)">
+  <meta name="description" content="碳路先锋业财碳智能核算中枢，由重庆理工大学2025级本科生罗鑫及其团队（Oliver Ellis Voss & Team）设计与开发。">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>碳路先锋 · 业财碳智能核算中枢</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23050a10'/%3E%3Ccircle cx='32' cy='32' r='21' fill='none' stroke='%2300ff88' stroke-width='3'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='monospace' font-size='24' font-weight='700' fill='%2300ff88'%3EC%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css?v=52">
+  <link rel="stylesheet" href="ui-refinement.css?v=47">
+</head>
+<body>
+  <a class="skip-link" href="#page-content">跳到主要内容</a>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="4"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M5 6h14M7 6l-4 7h8L7 6ZM17 6l-4 7h8l-4-7ZM8 21h8"/></symbol>
+    <symbol id="i-tree" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="5" rx="1.5"/><rect x="2" y="16" width="7" height="5" rx="1.5"/><rect x="15" y="16" width="7" height="5" rx="1.5"/><path d="M12 8v4M5.5 16v-4h13v4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h5M8 12h8M8 16h8M8 8h2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 16v4h14v-4"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3ZM19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5M12 18h.01"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M20 4c-8 0-14 3-14 10a6 6 0 0 0 6 6c7 0 8-8 8-16ZM4 21c2-5 6-8 11-10"/></symbol>
+    <symbol id="i-coins" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v5c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 11v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/></symbol>
+    <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5h10v16M14 9h6v12M2 21h20M7 9h4M7 13h4M7 17h4M17 13h1M17 17h1"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-9M15 6h6v6"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17 19H7a5 5 0 1 1 1.5-9.8A6 6 0 0 1 20 12a3.5 3.5 0 0 1-3 7Z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H4V9h16v8h-3M7 14h10v7H7z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+  </svg>
+
+  <div class="botanical-layer" aria-hidden="true"></div>
+
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#" data-route="dashboard" aria-label="碳路先锋首页">
+        <span class="brand-mark">
+          <span class="brand-orbit"></span>
+          <span class="brand-core">C</span>
+        </span>
+        <span class="brand-copy">
+          <strong>碳路先锋</strong>
+          <span>CARBON PATHFINDER</span>
+        </span>
+      </a>
+
+      <div class="nav-wrap">
+        <p class="nav-label">工作台</p>
+        <nav class="nav-list" aria-label="主导航">
+          <button class="nav-item active" data-route="dashboard">
+            <svg><use href="#i-grid"></use></svg><span>总览</span>
+          </button>
+          <button class="nav-item" data-route="projects">
+            <svg><use href="#i-file"></use></svg><span>核算项目</span>
+          </button>
+          <button class="nav-item" data-route="wizard" data-new-project="true">
+            <svg><use href="#i-plus"></use></svg><span>新建碳核算</span>
+            <span class="nav-badge">新</span>
+          </button>
+        </nav>
+
+        <p class="nav-label">核算流程</p>
+        <nav class="nav-list" aria-label="核算流程">
+          <button class="nav-item" data-route="ledger">
+            <svg><use href="#i-file"></use></svg><span>数据台账</span><span class="nav-dot" id="ledger-dot"></span>
+          </button>
+          <button class="nav-item" data-route="balance">
+            <svg><use href="#i-scale"></use></svg><span>碳流天平</span>
+          </button>
+          <button class="nav-item" data-route="cost">
+            <svg><use href="#i-tree"></use></svg><span>业财穿透</span>
+          </button>
+          <button class="nav-item" data-route="cbam">
+            <svg><use href="#i-globe"></use></svg><span>CBAM 模拟</span>
+          </button>
+        </nav>
+
+        <p class="nav-label">交付</p>
+        <nav class="nav-list" aria-label="交付">
+          <button class="nav-item" data-route="report">
+            <svg><use href="#i-report"></use></svg><span>核算报告</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="system-health">
+          <span class="health-pulse"></span>
+          <div><strong>核算引擎运行中</strong><span>数据已本地加密</span></div>
+        </div>
+        <div class="team-card">
+          <div class="avatar">碳</div>
+          <div><strong>碳路先锋团队</strong><span>企业专业版</span></div>
+          <button class="icon-button subtle" aria-label="设置"><svg><use href="#i-settings"></use></svg></button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-button mobile-menu" id="mobile-menu" aria-label="打开导航" aria-controls="sidebar" aria-expanded="false"><svg><use href="#i-menu"></use></svg></button>
+          <div class="breadcrumb">
+            <span>碳路先锋</span>
+            <svg><use href="#i-chevron-right"></use></svg>
+            <strong id="current-page-name">总览</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="period-chip" id="period-chip"><span></span> 核算周期 · 2026 Q4</div>
+          <button class="search-trigger" id="search-trigger" aria-label="搜索数据、订单或报告">
+            <svg><use href="#i-search"></use></svg><span>搜索数据、订单或报告</span><kbd>⌘ K</kbd>
+          </button>
+          <button class="icon-button" id="topbar-ai" aria-label="打开 AI 降碳助手" aria-controls="ai-panel" aria-expanded="false">
+            <svg><use href="#i-spark"></use></svg>
+          </button>
+          <button class="icon-button notification-button" id="notification-button" aria-label="通知">
+            <svg><use href="#i-bell"></use></svg><span class="notification-dot"></span>
+          </button>
+          <div class="user-avatar">LS</div>
+        </div>
+      </header>
+
+      <main id="page-content" class="page-content" tabindex="-1"></main>
+      <footer class="author-footer" aria-label="网页作者">
+        <span class="author-monogram" aria-hidden="true">鑫</span>
+        <div class="author-identity">
+          <span class="author-role">网页作者 · 设计与开发</span>
+          <div class="author-name-row">
+            <strong>罗鑫及其团队</strong>
+            <span>Oliver Ellis Voss &amp; Team</span>
+          </div>
+          <small>重庆理工大学 · 2025级本科</small>
+        </div>
+        <span class="author-signature" aria-hidden="true">Oliver Ellis Voss &amp; Team</span>
+      </footer>
+    </section>
+
+    <div class="mobile-backdrop" id="mobile-backdrop"></div>
+  </div>
+
+  <button class="ai-launcher" id="ai-launcher" aria-label="打开 AI 降碳助手" aria-controls="ai-panel" aria-expanded="false">
+    <span class="ai-glow"></span>
+    <svg><use href="#i-spark"></use></svg>
+    <span class="ai-launcher-label">AI 助手</span>
+  </button>
+
+  <aside class="ai-panel" id="ai-panel" aria-hidden="true" inert role="dialog" aria-modal="true" aria-label="AI 降碳助手">
+    <div class="ai-panel-head">
+      <div class="ai-identity">
+        <span class="ai-avatar"><svg><use href="#i-spark"></use></svg></span>
+        <div><strong>碳路 AI 助手</strong><span><i></i> 已连接核算数据</span></div>
+      </div>
+      <button class="icon-button" id="ai-close" aria-label="关闭 AI 助手"><svg><use href="#i-close"></use></svg></button>
+    </div>
+    <div class="ai-panel-body" id="ai-messages">
+      <div class="ai-time">今天 14:32</div>
+      <div class="chat-bubble assistant" id="ai-intro">
+        已读取当前项目的台账和碳流参数。需要我检查高碳运输线路或生成降碳建议吗？
+      </div>
+      <div class="ai-suggestion-card">
+        <div class="suggestion-title"><span class="mini-alert"></span> 运输情景建议</div>
+        <div class="suggestion-route">
+          <span id="ai-road-label">当前公路线路</span><i></i><span>低碳方案</span><strong id="ai-saving-label">可测算</strong>
+        </div>
+        <p id="ai-suggestion-copy">完成台账录入后，可比较当前公路线路与低碳运输方案。</p>
+      </div>
+    </div>
+    <div class="ai-quick-prompts">
+      <button data-prompt="为什么碳流不平衡？">为什么碳流不平衡？</button>
+      <button data-prompt="找出高碳线路">找出高碳线路</button>
+      <button data-prompt="生成降碳建议">生成降碳建议</button>
+    </div>
+    <form class="ai-input-wrap" id="ai-form">
+      <input id="ai-input" placeholder="询问你的碳数据..." autocomplete="off" aria-label="询问 AI 碳数据助手">
+      <button type="submit" aria-label="发送"><svg><use href="#i-arrow-right"></use></svg></button>
+    </form>
+  </aside>
+
+  <div class="search-overlay" id="search-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="搜索">
+    <div class="search-modal">
+      <div class="search-box">
+        <svg><use href="#i-search"></use></svg>
+        <input id="global-search" placeholder="搜索订单、运输线路、台账数据..." autocomplete="off" aria-label="搜索订单、运输线路和台账数据">
+        <button id="search-close">ESC</button>
+      </div>
+      <div class="search-results">
+        <p class="search-label" id="search-label">快捷跳转</p>
+        <div id="search-results-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <script src="app.js?v=52" defer></script>
+</body>
+</html>
