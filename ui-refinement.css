@@ -407,6 +407,27 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.author-signature-block {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 6px;
+  text-align: right;
+}
+
+.author-contact {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-decoration: none;
+  text-underline-offset: 4px;
+}
+
+.author-contact:hover {
+  color: var(--green);
+  text-decoration: underline;
+}
+
 .page-head {
   position: relative;
   isolation: isolate;
@@ -2270,9 +2291,14 @@ td strong {
     height: 40px;
   }
 
-  .author-signature {
+  .author-signature-block {
     grid-column: 2;
     margin-top: -5px;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .author-signature {
     font-size: 14px;
   }
 
