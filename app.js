@@ -2,7 +2,7 @@
  * 碳路先锋业财碳智能核算中枢
  * Copyright © 2026 罗鑫及其团队. All rights reserved.
  * Unauthorized copying, modification, or redistribution is prohibited.
- * Build fingerprint: CP-V101-20261023-RX
+ * Build fingerprint: CP-V102-20261023-RX
  */
 const ACCOUNTING_PERIOD = "2026 Q4";
 const DATA_AS_OF = "2026-10-22";
@@ -18,15 +18,16 @@ const LEGACY_STORAGE_KEY = "carbon-pathfinder-demo-v1";
 const DEMO_PROJECT_ID = "demo-cmc-2026-q4";
 const SOFTWARE_FULL_NAME = "碳路先锋业财碳智能核算中枢";
 const SOFTWARE_SHORT_NAME = "碳路先锋";
-const SOFTWARE_VERSION = "V1.0.1";
+const SOFTWARE_VERSION = "V1.0.2";
 const SOFTWARE_VERSION_DATE = "2026-10-23";
-const SOFTWARE_BUILD_FINGERPRINT = "CP-V101-20261023-RX";
+const SOFTWARE_BUILD_FINGERPRINT = "CP-V102-20261023-RX";
 const SOFTWARE_DEVELOPER = "罗鑫及其团队（Oliver Ellis Voss & Team）";
 const SOFTWARE_UNIT = "重庆理工大学";
 const SOFTWARE_SITE_URL = "https://2179232889-a11y.github.io/carbon-pathfinder/";
 const SOFTWARE_CONTACT_EMAIL = "xluo0246@gmail.com";
 const INVITE_CODE_HASH = "cc53484fdf4b487e9fee2baa4d7240b7c1e00c0222b156d22c9699c0b59f32cb";
 const INVITE_STORAGE_KEY = "carbon-pathfinder-invite-2026-v1";
+const ACCESS_GATE_ENABLED = false;
 const MAX_SHARE_URL_LENGTH = 12000;
 
 const PROVINCE_FACTORS = {
@@ -1730,7 +1731,7 @@ function reportPage() {
     ` : ""}
     <p class="report-share-note" role="note">
       ${icon("info")}
-      <span>分享快照会包含企业名称和台账数据；审阅人在新设备上仍需邀请码。台账较大时请改用 PDF 或项目备份。</span>
+      <span>分享快照会包含企业名称和台账数据；审阅人可直接打开。台账较大时请改用 PDF 或项目备份。</span>
     </p>
     <div class="report-shell page-enter">
       <div class="card report-toolbar">
@@ -1850,7 +1851,7 @@ function aboutPage() {
       "软件信息",
       "本页面集中展示软件名称、版本、用途、运行环境、数据边界与版权声明，便于用户了解和材料归档。",
       `<a class="button" href="${SOFTWARE_SITE_URL}" target="_blank" rel="noopener">${icon("globe")} 打开公开演示</a>
-       <button class="button" data-action="lock-access">${icon("lock")} 退出本设备授权</button>`
+       ${ACCESS_GATE_ENABLED ? `<button class="button" data-action="lock-access">${icon("lock")} 退出本设备授权</button>` : ""}`
     )}
     <div class="about-layout page-enter">
       <article class="card about-identity-card">
@@ -2708,7 +2709,7 @@ async function shareReportLink() {
       input.remove();
       shared = true;
     }
-    showToast("报告快照链接已复制", "已包含当前项目数据快照；审阅人在新设备上仍需输入邀请码");
+    showToast("报告快照链接已复制", "已包含当前项目数据快照，审阅人可直接打开");
   } catch {
     showToast("分享链接", url);
   }
@@ -2962,6 +2963,12 @@ async function initializeAccessGate() {
   const form = document.getElementById("invite-form");
   const appShell = document.getElementById("app-shell");
   const skipLink = document.getElementById("skip-link");
+  if (!ACCESS_GATE_ENABLED) {
+    if (gate) gate.hidden = true;
+    revealApplication();
+    startApplication();
+    return;
+  }
   if (!gate || !form || !appShell) {
     revealApplication();
     startApplication();
