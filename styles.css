@@ -1,7 +1,7 @@
 /*
  * 碳路先锋业财碳智能核算中枢
  * Copyright © 2026 罗鑫及其团队. All rights reserved.
- * Build fingerprint: CP-V100-20261023-RX
+ * Build fingerprint: CP-V101-20261023-RX
  */
 
 :root {
@@ -4287,6 +4287,8 @@ td.num {
   .author-footer,
   .page-head,
   .report-toolbar,
+  .report-share-note,
+  .report-completion-note,
   .toast-stack {
     display: none !important;
   }

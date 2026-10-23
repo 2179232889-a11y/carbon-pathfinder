@@ -2,7 +2,7 @@
  * 碳路先锋业财碳智能核算中枢
  * Copyright © 2026 罗鑫及其团队. All rights reserved.
  * Unauthorized copying, modification, or redistribution is prohibited.
- * Build fingerprint: CP-V100-20261023-RX
+ * Build fingerprint: CP-V101-20261023-RX
  */
 const ACCOUNTING_PERIOD = "2026 Q4";
 const DATA_AS_OF = "2026-10-22";
@@ -18,15 +18,16 @@ const LEGACY_STORAGE_KEY = "carbon-pathfinder-demo-v1";
 const DEMO_PROJECT_ID = "demo-cmc-2026-q4";
 const SOFTWARE_FULL_NAME = "碳路先锋业财碳智能核算中枢";
 const SOFTWARE_SHORT_NAME = "碳路先锋";
-const SOFTWARE_VERSION = "V1.0.0";
+const SOFTWARE_VERSION = "V1.0.1";
 const SOFTWARE_VERSION_DATE = "2026-10-23";
-const SOFTWARE_BUILD_FINGERPRINT = "CP-V100-20261023-RX";
+const SOFTWARE_BUILD_FINGERPRINT = "CP-V101-20261023-RX";
 const SOFTWARE_DEVELOPER = "罗鑫及其团队（Oliver Ellis Voss & Team）";
 const SOFTWARE_UNIT = "重庆理工大学";
 const SOFTWARE_SITE_URL = "https://2179232889-a11y.github.io/carbon-pathfinder/";
 const SOFTWARE_CONTACT_EMAIL = "xluo0246@gmail.com";
 const INVITE_CODE_HASH = "cc53484fdf4b487e9fee2baa4d7240b7c1e00c0222b156d22c9699c0b59f32cb";
 const INVITE_STORAGE_KEY = "carbon-pathfinder-invite-2026-v1";
+const MAX_SHARE_URL_LENGTH = 12000;
 
 const PROVINCE_FACTORS = {
   "全国": 0.5306,
@@ -106,7 +107,7 @@ const SEED_LEDGER_ROWS = [
   { name: "一氯甲烷", source: "采购发票", amount: 116.2, unit: "t", factor: 1.284, factorUnit: "tCO₂e/t", emissions: 149.2, status: "已映射" },
   { name: "外购电力", source: "重庆电费单", amount: 1284.6, unit: "MWh", factor: CQ_ELECTRICITY_FACTOR, factorUnit: "tCO₂e/MWh", emissions: 716.96, status: "已映射" },
   { name: "蒸汽", source: "能源台账", amount: 1860, unit: "t", factor: 0.242, factorUnit: "tCO₂e/t", emissions: 450.12, status: "已映射" },
-  { name: "公路运输", source: "物流单", amount: 46820, unit: "t·km", factor: 0.096, factorUnit: "kgCO₂e/t·km", emissions: 4.49, status: "待确认" }
+  { name: "公路运输", source: "物流单", amount: 46820, unit: "t·km", factor: 0.096, factorUnit: "kgCO₂e/t·km", emissions: 4.49, status: "已映射" }
 ];
 
 const state = {
@@ -468,6 +469,13 @@ function ensureDemoProject(activateWhenEmpty = true) {
     if (!String(demo.projectName || "").startsWith("演示示例")) {
       demo.projectName = `演示示例 · ${demo.projectName || "CMC 2026 Q4"}`;
     }
+    if (Array.isArray(demo.ledgerRows)) {
+      demo.ledgerRows = demo.ledgerRows.map((row) => (
+        row.name === "公路运输" && row.source === "物流单" && Number(row.factor) === 0.096
+          ? { ...row, status: "已映射" }
+          : row
+      ));
+    }
   }
   if (activateWhenEmpty && !activeProjectId) {
     activeProjectId = demo.id;
@@ -726,7 +734,7 @@ function dashboardPage() {
   const hasLedger = state.ledgerRows.length > 0;
   const carbonCost = total * state.carbonPrice / 10000;
   const balance = getBalanceMetrics();
-  const mappedRows = state.ledgerRows.filter((row) => row.status !== "待确认").length;
+  const mappedRows = getMappedLedgerCount();
   const dataCompleteness = state.ledgerRows.length ? mappedRows / state.ledgerRows.length * 100 : 0;
   const carbonIntensity = total / Math.max(1, state.productOutput);
   const scope1 = state.ledgerRows
@@ -1217,6 +1225,29 @@ function getBalanceMetrics() {
   };
 }
 
+function getMappedLedgerCount() {
+  return state.ledgerRows.filter((row) => row.status === "已映射").length;
+}
+
+function getProjectCompletionIssues() {
+  const issues = [];
+  const mappedRows = getMappedLedgerCount();
+  if (!state.ledgerRows.length) {
+    issues.push("至少录入一项活动数据");
+  } else if (mappedRows !== state.ledgerRows.length) {
+    issues.push(`${state.ledgerRows.length - mappedRows} 项活动数据仍待确认`);
+  }
+  if (!String(state.organization || "").trim()) issues.push("填写企业名称");
+  if (!String(state.province || "").trim()) issues.push("填写省份或地区");
+  if (!String(state.selections?.industry || "").trim()) issues.push("填写行业");
+  if (!String(state.selections?.product || "").trim()) issues.push("填写核算产品");
+  if (!String(state.selections?.process || "").trim()) issues.push("填写核心工艺");
+  if (!(Number(state.productOutput) > 0)) issues.push("填写有效产品产量");
+  if (!state.dataAsOf) issues.push("填写数据截止日期");
+  if (!getBalanceMetrics().balanced) issues.push("完成碳流天平闭合校验");
+  return issues;
+}
+
 function normalizeBalanceValue(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
@@ -1548,7 +1579,7 @@ function computeCBAM() {
     railDuty,
     targetDuty,
     embedded,
-    unitDuty: state.cbamVolume > 0 ? duty / state.cbamVolume * 7.2 : 0,
+    unitDuty: state.cbamVolume > 0 ? duty / state.cbamVolume * EUR_CNY_RATE : 0,
     deltaPercent: roadDuty > 0 ? (duty - roadDuty) / roadDuty * 100 : 0,
     saving: roadDuty - railDuty,
     domesticPriceEur,
@@ -1611,7 +1642,7 @@ function cbamPage() {
     <div class="cbam-layout page-enter">
       <article class="card simulator-card">
         <h2>出口情景参数</h2>
-        <p>${state.isDemoData ? "当前为演示项目，参数调整后右侧结果会实时更新。" : "请按实际出口订单和核算口径填写，右侧结果会实时更新。"}</p>
+        <p>${state.isDemoData ? "当前为演示项目，参数调整后结果区会实时更新。" : "请按实际出口订单和核算口径填写，结果区会实时更新。"}</p>
         <div class="field">
           <label>出口欧盟数量 <strong id="volume-value">${state.cbamVolume} t</strong></label>
           <input id="cbam-volume" type="number" min="0" step="0.01" value="${state.cbamVolume}" aria-label="出口欧盟数量">
@@ -1670,7 +1701,7 @@ function cbamPage() {
 function reportPage() {
   const reportTotal = getLedgerTotal();
   const balance = getBalanceMetrics();
-  const mappedRows = state.ledgerRows.filter((row) => row.status !== "待确认").length;
+  const mappedRows = getMappedLedgerCount();
   const dataCompleteness = state.ledgerRows.length ? mappedRows / state.ledgerRows.length * 100 : 0;
   const intensity = state.productOutput > 0 ? reportTotal / state.productOutput : null;
   const reportLocation = [state.province, state.city].filter(Boolean).join(" / ") || "地区待填写";
@@ -1678,6 +1709,8 @@ function reportPage() {
   const reportProduct = state.selections.product || "产品待填写";
   const reportProcess = state.selections.process || "工艺待填写";
   const reportIndustry = state.selections.industry || "行业待填写";
+  const completionIssues = getProjectCompletionIssues();
+  const completionBlocked = completionIssues.length > 0;
   const reportRows = state.ledgerRows.length
     ? state.ledgerRows.map((row) => `<tr><td><strong>${escapeHtml(row.name || "未命名数据")}</strong></td><td>${formatNumber(row.amount, 2)} ${escapeHtml(row.unit)}</td><td>${formatNumber(row.factor, 4)} ${escapeHtml(row.factorUnit)}</td><td>${formatNumber(row.emissions)}</td><td>${escapeHtml(row.source || "未填写")}</td></tr>`).join("")
     : `<tr><td class="report-empty-row" colspan="5">尚未录入活动数据，本报告仅展示项目边界与参数占位。</td></tr>`;
@@ -1685,10 +1718,20 @@ function reportPage() {
   const reportCode = `CPR-${String(state.projectPeriod).replace(/[^0-9A-Za-z\u4e00-\u9fa5]/g, "").slice(0, 10)}-${String(activeProjectId || "LOCAL").slice(-4).toUpperCase()}`;
   return `
     ${pageHead("Disclosure / Audit-ready", "核算报告", "将活动数据、边界校验和成本分摊结果整理为可追溯的标准化披露文件。",
-      `${state.projectStatus !== "ready" ? `<button class="button" data-action="complete-project">${icon("check")} 标记项目完成</button>` : ""}
+      `${state.projectStatus !== "ready" ? `<button class="button" data-action="complete-project" ${completionBlocked ? `disabled aria-describedby="report-completion-note" title="${escapeHtml(completionIssues.join("；"))}"` : ""}>${icon("check")} 标记项目完成</button>` : ""}
        <button class="button" data-action="share-report">${icon("upload")} 分享审阅</button>
        <button class="button primary" data-action="print-report">${icon("printer")} 打印 / 导出 PDF</button>`
     )}
+    ${completionBlocked ? `
+      <div class="report-completion-note" id="report-completion-note" role="status">
+        ${icon("alert")}
+        <span><strong>${state.projectStatus === "ready" ? "当前项目状态需要复核" : "完成前还需处理"}</strong>${escapeHtml(completionIssues.slice(0, 4).join("；"))}${completionIssues.length > 4 ? "；其余问题请在对应页面补全" : ""}</span>
+      </div>
+    ` : ""}
+    <p class="report-share-note" role="note">
+      ${icon("info")}
+      <span>分享快照会包含企业名称和台账数据；审阅人在新设备上仍需邀请码。台账较大时请改用 PDF 或项目备份。</span>
+    </p>
     <div class="report-shell page-enter">
       <div class="card report-toolbar">
         <div>${icon(mappedRows === state.ledgerRows.length && state.ledgerRows.length ? "check" : "alert")} ${mappedRows} / ${state.ledgerRows.length} 项活动数据已映射 · ${dataCompleteness.toFixed(1)}% 可追溯</div>
@@ -1806,7 +1849,8 @@ function aboutPage() {
       "Software Identity / Ownership Notice",
       "软件信息",
       "本页面集中展示软件名称、版本、用途、运行环境、数据边界与版权声明，便于用户了解和材料归档。",
-      `<a class="button" href="${SOFTWARE_SITE_URL}" target="_blank" rel="noopener">${icon("globe")} 打开公开演示</a>`
+      `<a class="button" href="${SOFTWARE_SITE_URL}" target="_blank" rel="noopener">${icon("globe")} 打开公开演示</a>
+       <button class="button" data-action="lock-access">${icon("lock")} 退出本设备授权</button>`
     )}
     <div class="about-layout page-enter">
       <article class="card about-identity-card">
@@ -2541,7 +2585,7 @@ function parseLedgerCsv(text) {
       factor,
       factorUnit,
       emissions,
-      status: row.status || row["状态"] || "已映射"
+      status: row.status || row["状态"] || "待确认"
     };
   });
 }
@@ -2553,7 +2597,13 @@ async function importLedgerFile(file) {
     }
     if (file.size > 20 * 1024 * 1024) throw new Error("文件超过 20MB 上限");
     const rows = parseLedgerCsv(await file.text());
-      loadLedgerRows(rows, file.name, false);
+    if (state.ledgerRows.length && !window.confirm(
+      `导入「${file.name}」将替换当前项目中的 ${state.ledgerRows.length} 条台账数据。\n\n原数据会被移除，请确认已经导出备份。是否继续？`
+    )) {
+      showToast("已取消导入", "当前台账保持不变，可先导出项目备份后再替换");
+      return;
+    }
+    loadLedgerRows(rows, file.name, false);
   } catch (error) {
     showToast("导入失败", error.message || "请检查 CSV 表头与数据格式");
   }
@@ -2628,6 +2678,13 @@ async function shareReportLink() {
   shareUrl.hash = "report";
   shareUrl.searchParams.set("share", encodeShareState());
   const url = shareUrl.href;
+  if (url.length > MAX_SHARE_URL_LENGTH) {
+    showToast(
+      "数据量较大，未生成分享链接",
+      "当前台账会让链接被聊天工具截断。请改用“打印 / 导出 PDF”或项目备份发送。"
+    );
+    return;
+  }
   try {
     let shared = false;
     if (navigator.share) {
@@ -2651,7 +2708,7 @@ async function shareReportLink() {
       input.remove();
       shared = true;
     }
-    showToast("报告快照链接已准备好", "链接包含当前项目数据快照，可直接发送给审阅人");
+    showToast("报告快照链接已复制", "已包含当前项目数据快照；审阅人在新设备上仍需输入邀请码");
   } catch {
     showToast("分享链接", url);
   }
@@ -2869,9 +2926,25 @@ function revealApplication() {
   document.body.classList.remove("access-locked");
 }
 
+function lockAccess() {
+  try {
+    localStorage.removeItem(INVITE_STORAGE_KEY);
+  } catch {}
+  const url = new URL(window.location.href);
+  url.hash = "dashboard";
+  url.searchParams.delete("share");
+  url.searchParams.set("lock", Date.now().toString());
+  window.location.replace(url.href);
+}
+
 function startApplication() {
   if (applicationStarted) return;
   applicationStarted = true;
+  const currentUrl = new URL(window.location.href);
+  if (currentUrl.searchParams.has("lock")) {
+    currentUrl.searchParams.delete("lock");
+    history.replaceState(null, "", currentUrl.href);
+  }
   const initialRoute = window.location.hash.slice(1);
   if (pageRenderers[initialRoute]) {
     state.route = initialRoute;
@@ -2934,18 +3007,26 @@ async function initializeAccessGate() {
     try {
       const codeHash = await hashInviteCode(value);
       if (codeHash !== INVITE_CODE_HASH) {
-        error.textContent = "邀请码不正确，请检查大小写和分隔符后重试。";
+        error.textContent = "邀请码不正确，请检查字符和分隔符后重试。";
         error.hidden = false;
         input.setAttribute("aria-invalid", "true");
         input.select();
         return;
       }
+      let authorizationRemembered = true;
       try {
         localStorage.setItem(INVITE_STORAGE_KEY, "granted");
-      } catch {}
+      } catch {
+        authorizationRemembered = false;
+      }
       revealApplication();
       startApplication();
       requestAnimationFrame(() => document.getElementById("page-content")?.focus({ preventScroll: true }));
+      if (!authorizationRemembered) {
+        setTimeout(() => {
+          showToast("本设备无法记住授权", "浏览器禁止写入本地存储，本次可以继续使用，但刷新后需要重新输入邀请码");
+        }, 80);
+      }
     } catch (failure) {
       error.textContent = failure.message || "邀请码验证失败，请使用最新版浏览器重试。";
       error.hidden = false;
@@ -3202,7 +3283,7 @@ document.addEventListener("click", (event) => {
       markProjectActive();
       state.cbamApplied = true;
       state.selectedRoute = "rail";
-      showToast("优化方案已应用", "公转铁联运已带入 CBAM 模拟，右侧结果已实时更新");
+      showToast("优化方案已应用", "公转铁联运已带入 CBAM 模拟，测算结果已实时更新");
       navigate("cbam");
       break;
     case "calculate-cbam":
@@ -3255,17 +3336,26 @@ document.addEventListener("click", (event) => {
       window.print();
       break;
     case "complete-project":
-      if (!getBalanceMetrics().balanced) {
-        showToast("暂时无法完成项目", "请先在碳流天平中完成边界校验");
+      {
+        const issues = getProjectCompletionIssues();
+        if (issues.length) {
+          showToast(
+            "暂时无法完成项目",
+            `还需处理：${issues.slice(0, 3).join("；")}${issues.length > 3 ? "；请查看报告顶部完整提示" : ""}`
+          );
+          break;
+        }
+        state.projectStatus = "ready";
+        persistState();
+        render({ preserveScroll: true });
+        showToast("项目已标记完成", `${state.projectName} · 报告与台账已通过完整性检查`);
         break;
       }
-      state.projectStatus = "ready";
-      persistState();
-      render({ preserveScroll: true });
-      showToast("项目已标记完成", `${state.projectName} · 报告和台账已保存`);
-      break;
     case "share-report":
       shareReportLink();
+      break;
+    case "lock-access":
+      lockAccess();
       break;
   }
 });

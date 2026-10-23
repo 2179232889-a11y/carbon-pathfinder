@@ -1,6 +1,6 @@
 /* Data-terminal refinement: flat surfaces, restrained colour, readable data.
  * Copyright © 2026 罗鑫及其团队. All rights reserved.
- * Build fingerprint: CP-V100-20261023-RX
+ * Build fingerprint: CP-V101-20261023-RX
  */
 :root {
   --bg: #07100e;
@@ -2406,7 +2406,12 @@ td strong {
 .report-table td,
 .report-footer,
 .signature span {
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.report-brand-left span,
+.report-title p {
+  letter-spacing: 0.04em;
 }
 
 .report-summary-item strong {
@@ -2445,11 +2450,49 @@ td strong {
 
 .report-toolbar,
 .report-check-line {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .report-toolbar > div {
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.report-share-note,
+.report-completion-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 12px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
+  background: var(--panel);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.report-share-note svg,
+.report-completion-note svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--green);
+}
+
+.report-completion-note {
+  color: var(--text);
+  border-color: rgba(231, 180, 91, 0.35);
+}
+
+.report-completion-note svg {
+  color: var(--amber);
+}
+
+.report-completion-note strong {
+  display: block;
+  margin-bottom: 2px;
 }
 
 .report-author {
@@ -2846,8 +2889,8 @@ td strong {
   .cost-layout,
   .cbam-layout,
   .about-identity-card {
-    grid-template-columns: 80px minmax(0, 1fr);
-    column-gap: 20px;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
   }
 
   .about-function-list {
@@ -3121,6 +3164,10 @@ td strong {
 
   .about-function-list,
   .about-spec-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-controls {
     grid-template-columns: 1fr;
   }
 
