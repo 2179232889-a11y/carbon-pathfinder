@@ -1,3 +1,9 @@
+/*
+ * 碳路先锋业财碳智能核算中枢
+ * Copyright © 2026 罗鑫及其团队. All rights reserved.
+ * Unauthorized copying, modification, or redistribution is prohibited.
+ * Build fingerprint: CP-V100-20261023-RX
+ */
 const ACCOUNTING_PERIOD = "2026 Q4";
 const DATA_AS_OF = "2026-10-22";
 const CN_CARBON_PRICE = 96.66;
@@ -10,6 +16,15 @@ const CO2_TO_CARBON_FACTOR = 12 / 44;
 const PROJECTS_STORAGE_KEY = "carbon-pathfinder-projects-v2";
 const LEGACY_STORAGE_KEY = "carbon-pathfinder-demo-v1";
 const DEMO_PROJECT_ID = "demo-cmc-2026-q4";
+const SOFTWARE_FULL_NAME = "碳路先锋业财碳智能核算中枢";
+const SOFTWARE_SHORT_NAME = "碳路先锋";
+const SOFTWARE_VERSION = "V1.0.0";
+const SOFTWARE_VERSION_DATE = "2026-10-23";
+const SOFTWARE_BUILD_FINGERPRINT = "CP-V100-20261023-RX";
+const SOFTWARE_DEVELOPER = "罗鑫及其团队（Oliver Ellis Voss & Team）";
+const SOFTWARE_UNIT = "重庆理工大学";
+const SOFTWARE_SITE_URL = "https://2179232889-a11y.github.io/carbon-pathfinder/";
+const SOFTWARE_CONTACT_EMAIL = "xluo0246@gmail.com";
 
 const PROVINCE_FACTORS = {
   "全国": 0.5306,
@@ -163,7 +178,8 @@ const pageNames = {
   balance: "碳流天平",
   cost: "业财穿透",
   cbam: "CBAM 模拟",
-  report: "核算报告"
+  report: "核算报告",
+  about: "软件信息"
 };
 
 const icon = (name, cls = "") =>
@@ -1311,7 +1327,7 @@ function balancePage() {
   const balanceMax = Math.max(2500, Math.ceil(Math.max(input, product, waste, state.balanceMass.byproductLoss) * 1.2 / 100) * 100);
   return `
     ${pageHead("Mass Balance / Boundary Integrity", "碳流天平", "基于质量守恒校验输入与输出碳流，从机制上发现漏算、重复计算与边界错误。",
-      `<span class="period-chip"><span></span> 数据版本 V2.4</span>`
+      `<span class="period-chip"><span></span> 软件版本 ${SOFTWARE_VERSION}</span>`
     )}
     <div class="card balance-toolbar page-enter">
       <div class="toolbar-copy">${icon("info")} 当前边界：${escapeHtml(state.selections.product)} · ${escapeHtml(state.selections.process)} · ${escapeHtml(state.city || state.province)} · ${escapeHtml(state.projectPeriod)} · ${state.ledgerRows.length} 条活动数据</div>
@@ -1673,7 +1689,7 @@ function reportPage() {
     <div class="report-shell page-enter">
       <div class="card report-toolbar">
         <div>${icon(mappedRows === state.ledgerRows.length && state.ledgerRows.length ? "check" : "alert")} ${mappedRows} / ${state.ledgerRows.length} 项活动数据已映射 · ${dataCompleteness.toFixed(1)}% 可追溯</div>
-        <span class="status-chip">正式版 · V2.4</span>
+        <span class="status-chip">${SOFTWARE_VERSION} · ${SOFTWARE_VERSION_DATE}</span>
       </div>
       <article class="report-document">
         <div class="report-watermark">CARBON</div>
@@ -1766,8 +1782,90 @@ function reportPage() {
           <span>碳路先锋 · 业财碳智能核算中枢</span>
           <span>本报告由系统自动生成 · 数据可追溯至原始业务单据</span>
           <span class="report-author">网页作者：罗鑫及其团队 · Oliver Ellis Voss &amp; Team · 重庆理工大学 2025级本科 · 联系与反馈 xluo0246@gmail.com</span>
+          <span class="report-copyright">软件版本 ${SOFTWARE_VERSION} · 构建 ${SOFTWARE_BUILD_FINGERPRINT} · © 2026 罗鑫及其团队，保留所有权利</span>
         </footer>
       </article>
+    </div>
+  `;
+}
+
+function aboutPage() {
+  const functions = [
+    ["核算边界", "按企业、地区、行业、产品与工艺建立独立碳核算项目。"],
+    ["活动数据", "维护采购、能源、物流等活动数据，支持 CSV 导入与排放复算。"],
+    ["质量平衡", "通过输入与输出碳质量校验发现漏算、重复计算和边界错误。"],
+    ["成本分摊", "按重量、里程或货值拆分碳成本并追溯至作业与线路。"],
+    ["CBAM 情景", "测算出口欧盟订单的隐含排放、免费配额与关税成本。"],
+    ["核算报告", "生成可追溯报告，支持打印、PDF 与数据快照分享。"]
+  ];
+  return `
+    ${pageHead(
+      "Software Identity / Ownership Notice",
+      "软件信息",
+      "本页面集中展示软件名称、版本、用途、运行环境、数据边界与版权声明，便于用户了解和材料归档。",
+      `<a class="button" href="${SOFTWARE_SITE_URL}" target="_blank" rel="noopener">${icon("globe")} 打开公开演示</a>`
+    )}
+    <div class="about-layout page-enter">
+      <article class="card about-identity-card">
+        <div class="about-mark" aria-hidden="true">C</div>
+        <span class="about-kicker">软件全称</span>
+        <h2>${SOFTWARE_FULL_NAME}</h2>
+        <div class="about-version-line">
+          <strong>${SOFTWARE_VERSION}</strong>
+          <span>发布于 ${SOFTWARE_VERSION_DATE}</span>
+        </div>
+        <p>面向制造业企业的通用业财碳智能核算工具，把活动数据、边界校验、成本分摊、CBAM 情景和核算报告放在同一个可追溯项目快照中。</p>
+        <div class="about-identity-meta">
+          <div><span>开发者</span><strong>${SOFTWARE_DEVELOPER}</strong></div>
+          <div><span>作者单位</span><strong>${SOFTWARE_UNIT}</strong></div>
+          <div><span>构建指纹</span><strong>${SOFTWARE_BUILD_FINGERPRINT}</strong></div>
+          <div><span>永久演示地址</span><a href="${SOFTWARE_SITE_URL}" target="_blank" rel="noopener">${SOFTWARE_SITE_URL}</a></div>
+          <div><span>联系与反馈</span><a href="mailto:${SOFTWARE_CONTACT_EMAIL}?subject=%E7%A2%B3%E8%B7%AF%E5%85%88%E9%94%8B%E8%BD%AF%E4%BB%B6%E4%BF%A1%E6%81%AF">${SOFTWARE_CONTACT_EMAIL}</a></div>
+        </div>
+      </article>
+
+      <div class="about-sections">
+        <article class="card about-section">
+          <div class="about-section-head">
+            <div><span>软件用途</span><h3>让碳核算过程可解释、可校验、可追溯</h3></div>
+            ${statusChip("浏览器单机版", "")}
+          </div>
+          <p>系统面向企业财务、安环、能源和外贸人员，支持从核算边界建立到披露报告输出的完整流程。所有计算结果均基于当前项目录入的数据和参数。</p>
+          <div class="about-audience">
+            <span>财务负责人</span><span>安环负责人</span><span>能源管理员</span><span>外贸经理</span>
+          </div>
+        </article>
+
+        <article class="card about-section">
+          <div class="about-section-head">
+            <div><span>核心功能</span><h3>六个连续核算环节</h3></div>
+          </div>
+          <ol class="about-function-list">
+            ${functions.map(([name, description]) => `<li><strong>${name}</strong><p>${description}</p></li>`).join("")}
+          </ol>
+        </article>
+
+        <article class="card about-section">
+          <div class="about-section-head">
+            <div><span>运行说明</span><h3>运行环境与数据存储</h3></div>
+          </div>
+          <div class="about-spec-grid">
+            <div><span>软件类型</span><strong>Web 单页应用</strong><small>原生 HTML / CSS / JavaScript</small></div>
+            <div><span>运行环境</span><strong>现代浏览器</strong><small>Chrome / Edge，支持桌面与手机</small></div>
+            <div><span>数据位置</span><strong>当前浏览器本机</strong><small>localStorage，不上传业务数据</small></div>
+            <div><span>导入导出</span><strong>CSV / JSON / PDF</strong><small>活动台账、项目备份与核算报告</small></div>
+          </div>
+        </article>
+
+        <article class="card about-section about-copyright">
+          <div class="about-section-head">
+            <div><span>版权与使用说明</span><h3>© 2026 罗鑫及其团队 · 保留所有权利</h3></div>
+          </div>
+          <p>本项目仅授权用于在线体验、团队学习、竞赛展示与经许可的产品演示。未经书面许可，不得复制、改编、再发布源代码，或将本项目整体或实质性部分用于其他竞赛、商业产品或生产系统。</p>
+          <p>用户录入的核算数据默认保存在当前浏览器本地。请定期通过“核算项目”页面导出 JSON 备份。演示输出不构成正式审计、鉴证或法律意见。</p>
+          <p class="about-legal-note">最终著作权人及权利归属以正式登记材料、团队约定和相关机构规定为准。</p>
+        </article>
+      </div>
     </div>
   `;
 }
@@ -1780,7 +1878,8 @@ const pageRenderers = {
   balance: balancePage,
   cost: costPage,
   cbam: cbamPage,
-  report: reportPage
+  report: reportPage,
+  about: aboutPage
 };
 
 function render(options = {}) {
@@ -2587,7 +2686,7 @@ function getSearchItems() {
     { icon: "scale", title: "碳流平衡校验", detail: "查看边界闭合状态与异常碳流", route: "balance" },
     { icon: "tree", title: state.projectName, detail: `${state.selections.product || "当前产品"} · 成本穿透`, route: "cost" },
     { icon: "globe", title: "CBAM 关税模拟", detail: `${state.dataAsOf} · 当前项目参数`, route: "cbam" },
-    { icon: "report", title: "核算报告", detail: "正式版 V2.4 · 可打印与分享", route: "report" },
+    { icon: "report", title: "核算报告", detail: `${SOFTWARE_VERSION} · 可打印与分享`, route: "report" },
     ...state.ledgerRows.map((row) => ({
       icon: "file",
       title: row.name,
@@ -2600,6 +2699,7 @@ function getSearchItems() {
       detail: `${project.projectPeriod} · ${project.projectStatus}`,
       route: "projects"
     })),
+    { icon: "info", title: "软件信息与版权说明", detail: `${SOFTWARE_VERSION} · 运行环境 · 数据存储 · 使用范围`, route: "about" },
     { icon: "globe", title: "项目碳价参数", detail: `¥${state.carbonPrice.toFixed(2)}/t · ${state.dataAsOf}`, route: "cbam" }
   ];
 }
