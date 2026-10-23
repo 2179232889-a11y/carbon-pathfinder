@@ -135,6 +135,193 @@ textarea::placeholder,
   pointer-events: none;
 }
 
+.access-gate {
+  position: relative;
+  z-index: 200;
+  min-height: 100dvh;
+  padding: 32px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body.access-locked {
+  overflow: hidden;
+}
+
+.access-gate::before,
+.access-gate::after {
+  content: "";
+  position: absolute;
+  display: block;
+  background: url("botanical-sprig.svg") center / contain no-repeat;
+  pointer-events: none;
+}
+
+.access-gate::before {
+  top: -90px;
+  right: -130px;
+  width: 520px;
+  height: 260px;
+  opacity: 0.56;
+}
+
+.access-gate::after {
+  bottom: -118px;
+  left: -180px;
+  width: 560px;
+  height: 280px;
+  opacity: 0.22;
+  transform: rotate(180deg);
+}
+
+.access-gate[hidden] {
+  display: none !important;
+}
+
+.access-gate-frame {
+  position: relative;
+  width: min(980px, 100%);
+  padding: 38px 42px 30px;
+  display: grid;
+  gap: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+
+.access-gate-brand {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.access-gate-brand > span:last-child {
+  min-width: 0;
+}
+
+.access-gate-brand strong {
+  display: block;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.access-gate-brand small {
+  margin-top: 4px;
+  display: block;
+  color: var(--text-muted);
+  font: 11px var(--font-data);
+  letter-spacing: 0.04em;
+}
+
+.access-gate-body {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1.05fr);
+  align-items: end;
+  gap: 48px;
+}
+
+.access-gate-copy h1 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: clamp(32px, 4.3vw, 56px);
+  line-height: 1.06;
+  letter-spacing: -0.045em;
+}
+
+.access-gate-copy > p:last-child {
+  margin: 18px 0 0;
+  max-width: 480px;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.access-gate-kicker {
+  color: var(--green);
+  font: 600 12px var(--font-data);
+  letter-spacing: 0.045em;
+}
+
+.access-gate-form {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-raised);
+}
+
+.access-gate-form label {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.access-code-row {
+  margin-top: 9px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.access-code-row input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  outline: 0;
+  color: var(--text);
+  background: var(--bg);
+  font: 600 16px var(--font-data);
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.access-code-row input:focus {
+  border-color: var(--green);
+}
+
+.access-code-row .button {
+  min-height: 48px;
+  white-space: nowrap;
+}
+
+.access-gate-form > p {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.access-gate-form .access-gate-error {
+  color: var(--red);
+}
+
+.access-gate-footer {
+  padding-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.access-gate-footer a {
+  color: var(--text-soft);
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.access-gate-footer a:hover {
+  color: var(--green);
+}
+
 .botanical-layer::before {
   top: 76px;
   right: 238px;
@@ -2575,6 +2762,19 @@ td strong {
 }
 
 @media (max-width: 1020px) {
+  .access-gate {
+    padding: 20px;
+  }
+
+  .access-gate-frame {
+    width: min(720px, 100%);
+  }
+
+  .access-gate-body {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
   .brand,
   .nav-item {
     min-height: 44px;
@@ -2686,6 +2886,34 @@ td strong {
 }
 
 @media (max-width: 720px) {
+  .access-gate {
+    padding: 14px;
+  }
+
+  .access-gate-frame {
+    padding: 24px 18px 20px;
+    gap: 26px;
+  }
+
+  .access-code-row {
+    grid-template-columns: 1fr;
+  }
+
+  .access-code-row .button {
+    width: 100%;
+  }
+
+  .access-gate-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .access-gate-footer a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
   .author-footer {
     padding: 21px 18px 28px;
     grid-template-columns: 40px minmax(0, 1fr);

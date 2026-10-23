@@ -25,6 +25,8 @@ const SOFTWARE_DEVELOPER = "罗鑫及其团队（Oliver Ellis Voss & Team）";
 const SOFTWARE_UNIT = "重庆理工大学";
 const SOFTWARE_SITE_URL = "https://2179232889-a11y.github.io/carbon-pathfinder/";
 const SOFTWARE_CONTACT_EMAIL = "xluo0246@gmail.com";
+const INVITE_CODE_HASH = "cc53484fdf4b487e9fee2baa4d7240b7c1e00c0222b156d22c9699c0b59f32cb";
+const INVITE_STORAGE_KEY = "carbon-pathfinder-invite-2026-v1";
 
 const PROVINCE_FACTORS = {
   "全国": 0.5306,
@@ -168,6 +170,7 @@ let lastAiFocus = null;
 let lastMenuFocus = null;
 let projects = [];
 let activeProjectId = null;
+let applicationStarted = false;
 const mobileViewport = window.matchMedia("(max-width: 1020px)");
 
 const pageNames = {
@@ -2846,6 +2849,122 @@ function appendAIResponse(prompt) {
   }, 780);
 }
 
+async function hashInviteCode(value) {
+  const bytes = new TextEncoder().encode(value.trim().toUpperCase());
+  if (!window.crypto?.subtle) throw new Error("当前浏览器不支持本地邀请码验证，请使用最新版 Chrome 或 Edge");
+  const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function revealApplication() {
+  const gate = document.getElementById("access-gate");
+  const appShell = document.getElementById("app-shell");
+  const skipLink = document.getElementById("skip-link");
+  if (gate) gate.hidden = true;
+  if (appShell) {
+    appShell.hidden = false;
+    appShell.removeAttribute("inert");
+  }
+  if (skipLink) skipLink.hidden = false;
+  document.body.classList.remove("access-locked");
+}
+
+function startApplication() {
+  if (applicationStarted) return;
+  applicationStarted = true;
+  const initialRoute = window.location.hash.slice(1);
+  if (pageRenderers[initialRoute]) {
+    state.route = initialRoute;
+  }
+  const hasSharedSnapshot = new URLSearchParams(window.location.search).has("share");
+  restoreState();
+  ensureDemoProject(!hasSharedSnapshot);
+  syncMobileNavigation();
+  render();
+  syncMobileNavigation();
+}
+
+async function initializeAccessGate() {
+  const gate = document.getElementById("access-gate");
+  const form = document.getElementById("invite-form");
+  const appShell = document.getElementById("app-shell");
+  const skipLink = document.getElementById("skip-link");
+  if (!gate || !form || !appShell) {
+    revealApplication();
+    startApplication();
+    return;
+  }
+
+  let granted = false;
+  try {
+    granted = localStorage.getItem(INVITE_STORAGE_KEY) === "granted";
+  } catch {}
+  if (granted) {
+    revealApplication();
+    startApplication();
+    return;
+  }
+
+  document.body.classList.add("access-locked");
+  appShell.hidden = true;
+  appShell.setAttribute("inert", "");
+  if (skipLink) skipLink.hidden = true;
+  const input = document.getElementById("invite-code");
+  const error = document.getElementById("invite-error");
+  const submit = form.querySelector('button[type="submit"]');
+  requestAnimationFrame(() => input?.focus());
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!input || !submit) return;
+    const value = input.value.trim().toUpperCase();
+    error.hidden = true;
+    error.textContent = "";
+    input.removeAttribute("aria-invalid");
+    if (!value) {
+      error.textContent = "请输入邀请码后继续。";
+      error.hidden = false;
+      input.setAttribute("aria-invalid", "true");
+      input.focus();
+      return;
+    }
+    input.value = value;
+    submit.disabled = true;
+    submit.textContent = "验证中…";
+    try {
+      const codeHash = await hashInviteCode(value);
+      if (codeHash !== INVITE_CODE_HASH) {
+        error.textContent = "邀请码不正确，请检查大小写和分隔符后重试。";
+        error.hidden = false;
+        input.setAttribute("aria-invalid", "true");
+        input.select();
+        return;
+      }
+      try {
+        localStorage.setItem(INVITE_STORAGE_KEY, "granted");
+      } catch {}
+      revealApplication();
+      startApplication();
+      requestAnimationFrame(() => document.getElementById("page-content")?.focus({ preventScroll: true }));
+    } catch (failure) {
+      error.textContent = failure.message || "邀请码验证失败，请使用最新版浏览器重试。";
+      error.hidden = false;
+      input.focus();
+    } finally {
+      if (!applicationStarted) {
+        submit.disabled = false;
+        submit.textContent = "进入系统";
+      }
+    }
+  });
+
+  input?.addEventListener("input", () => {
+    input.removeAttribute("aria-invalid");
+    error.hidden = true;
+    error.textContent = "";
+  });
+}
+
 document.addEventListener("click", (event) => {
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) {
@@ -3202,6 +3321,7 @@ document.getElementById("ai-form").addEventListener("submit", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (!applicationStarted) return;
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     openSearch();
@@ -3218,6 +3338,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("hashchange", () => {
+  if (!applicationStarted) return;
   const route = window.location.hash.slice(1);
   if (pageRenderers[route] && route !== state.route) {
     state.route = route;
@@ -3226,9 +3347,11 @@ window.addEventListener("hashchange", () => {
 });
 
 mobileViewport.addEventListener("change", syncMobileNavigation);
-window.addEventListener("pagehide", flushPersist);
+window.addEventListener("pagehide", () => {
+  if (applicationStarted) flushPersist();
+});
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") flushPersist();
+  if (applicationStarted && document.visibilityState === "hidden") flushPersist();
 });
 
 document.addEventListener("dragover", (event) => {
@@ -3253,13 +3376,4 @@ document.addEventListener("drop", (event) => {
   if (file) importLedgerFile(file);
 });
 
-const initialRoute = window.location.hash.slice(1);
-if (pageRenderers[initialRoute]) {
-  state.route = initialRoute;
-}
-const hasSharedSnapshot = new URLSearchParams(window.location.search).has("share");
-restoreState();
-ensureDemoProject(!hasSharedSnapshot);
-syncMobileNavigation();
-render();
-syncMobileNavigation();
+initializeAccessGate();
