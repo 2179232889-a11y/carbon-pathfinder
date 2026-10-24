@@ -1,8 +1,8 @@
 /*
  * 碳路先锋业财碳智能核算中枢
- * Copyright © 2026 罗鑫及其团队. All rights reserved.
+ * Copyright © 2026 重庆理工大学碳路先锋项目团队. All rights reserved.
  * Unauthorized copying, modification, or redistribution is prohibited.
- * Build fingerprint: CP-V102-20261023-RX
+ * Build fingerprint: CP-V103-20261024-RX
  */
 const ACCOUNTING_PERIOD = "2026 Q4";
 const DATA_AS_OF = "2026-10-22";
@@ -18,10 +18,10 @@ const LEGACY_STORAGE_KEY = "carbon-pathfinder-demo-v1";
 const DEMO_PROJECT_ID = "demo-cmc-2026-q4";
 const SOFTWARE_FULL_NAME = "碳路先锋业财碳智能核算中枢";
 const SOFTWARE_SHORT_NAME = "碳路先锋";
-const SOFTWARE_VERSION = "V1.0.2";
-const SOFTWARE_VERSION_DATE = "2026-10-23";
-const SOFTWARE_BUILD_FINGERPRINT = "CP-V102-20261023-RX";
-const SOFTWARE_DEVELOPER = "罗鑫及其团队（Oliver Ellis Voss & Team）";
+const SOFTWARE_VERSION = "V1.0.3";
+const SOFTWARE_VERSION_DATE = "2026-10-24";
+const SOFTWARE_BUILD_FINGERPRINT = "CP-V103-20261024-RX";
+const SOFTWARE_DEVELOPER = "重庆理工大学碳路先锋项目团队";
 const SOFTWARE_UNIT = "重庆理工大学";
 const SOFTWARE_SITE_URL = "https://2179232889-a11y.github.io/carbon-pathfinder/";
 const SOFTWARE_CONTACT_EMAIL = "xluo0246@gmail.com";
@@ -1828,8 +1828,8 @@ function reportPage() {
         <footer class="report-footer">
           <span>碳路先锋 · 业财碳智能核算中枢</span>
           <span>本报告由系统自动生成 · 数据可追溯至原始业务单据</span>
-          <span class="report-author">网页作者：罗鑫及其团队 · Oliver Ellis Voss &amp; Team · 重庆理工大学 2025级本科 · 联系与反馈 xluo0246@gmail.com</span>
-          <span class="report-copyright">软件版本 ${SOFTWARE_VERSION} · 构建 ${SOFTWARE_BUILD_FINGERPRINT} · © 2026 罗鑫及其团队，保留所有权利</span>
+          <span class="report-author">项目单位：重庆理工大学 · 碳路先锋跨学科项目团队 · 项目联系 xluo0246@gmail.com</span>
+          <span class="report-copyright">软件版本 ${SOFTWARE_VERSION} · 构建 ${SOFTWARE_BUILD_FINGERPRINT} · © 2026 重庆理工大学碳路先锋项目团队，保留所有权利</span>
         </footer>
       </article>
     </div>
@@ -1864,8 +1864,8 @@ function aboutPage() {
         </div>
         <p>面向制造业企业的通用业财碳智能核算工具，把活动数据、边界校验、成本分摊、CBAM 情景和核算报告放在同一个可追溯项目快照中。</p>
         <div class="about-identity-meta">
-          <div><span>开发者</span><strong>${SOFTWARE_DEVELOPER}</strong></div>
-          <div><span>作者单位</span><strong>${SOFTWARE_UNIT}</strong></div>
+          <div><span>项目团队</span><strong>${SOFTWARE_DEVELOPER}</strong></div>
+          <div><span>项目单位</span><strong>${SOFTWARE_UNIT}</strong></div>
           <div><span>构建指纹</span><strong>${SOFTWARE_BUILD_FINGERPRINT}</strong></div>
           <div><span>永久演示地址</span><a href="${SOFTWARE_SITE_URL}" target="_blank" rel="noopener">${SOFTWARE_SITE_URL}</a></div>
           <div><span>联系与反馈</span><a href="mailto:${SOFTWARE_CONTACT_EMAIL}?subject=%E7%A2%B3%E8%B7%AF%E5%85%88%E9%94%8B%E8%BD%AF%E4%BB%B6%E4%BF%A1%E6%81%AF">${SOFTWARE_CONTACT_EMAIL}</a></div>
@@ -1907,7 +1907,7 @@ function aboutPage() {
 
         <article class="card about-section about-copyright">
           <div class="about-section-head">
-            <div><span>版权与使用说明</span><h3>© 2026 罗鑫及其团队 · 保留所有权利</h3></div>
+            <div><span>版权与使用说明</span><h3>© 2026 重庆理工大学碳路先锋项目团队 · 保留所有权利</h3></div>
           </div>
           <p>本项目仅授权用于在线体验、团队学习、竞赛展示与经许可的产品演示。未经书面许可，不得复制、改编、再发布源代码，或将本项目整体或实质性部分用于其他竞赛、商业产品或生产系统。</p>
           <p>用户录入的核算数据默认保存在当前浏览器本地。请定期通过“核算项目”页面导出 JSON 备份。演示输出不构成正式审计、鉴证或法律意见。</p>

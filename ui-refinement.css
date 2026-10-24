@@ -1,6 +1,6 @@
 /* Data-terminal refinement: flat surfaces, restrained colour, readable data.
- * Copyright © 2026 罗鑫及其团队. All rights reserved.
- * Build fingerprint: CP-V102-20261023-RX
+ * Copyright © 2026 重庆理工大学碳路先锋项目团队. All rights reserved.
+ * Build fingerprint: CP-V103-20261024-RX
  */
 :root {
   --bg: #07100e;
@@ -598,6 +598,12 @@ body.access-locked {
   line-height: 1.45;
 }
 
+.author-role {
+  color: var(--text-soft);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .author-identity .author-copyright {
   margin-top: 4px;
   color: var(--text-soft);
@@ -613,38 +619,44 @@ body.access-locked {
 
 .author-name-row strong {
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 650;
 }
 
 .author-name-row span {
-  color: var(--text-soft);
-  font-size: 13px;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.author-signature {
-  color: rgba(240, 246, 242, 0.52);
-  font-size: 17px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
+.author-collaboration {
+  color: var(--text-soft) !important;
 }
 
 .author-signature-block {
   display: flex;
   align-items: flex-end;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+  min-width: 190px;
   text-align: right;
 }
 
+.author-team-label {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 .author-contact {
-  min-height: 32px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   color: var(--text-muted);
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.5;
   text-decoration: none;
   text-underline-offset: 4px;
 }
@@ -2972,11 +2984,12 @@ td strong {
     grid-column: 2;
     margin-top: -5px;
     align-items: flex-start;
+    min-width: 0;
     text-align: left;
   }
 
-  .author-signature {
-    font-size: 14px;
+  .author-team-label {
+    margin-top: 4px;
   }
 
   .botanical-layer::before {
