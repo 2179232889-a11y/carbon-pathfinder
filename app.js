@@ -3,6 +3,7 @@
  * Copyright © 2026 重庆理工大学碳路先锋项目团队. All rights reserved.
  * Unauthorized copying, modification, or redistribution is prohibited.
  * Build fingerprint: CP-V103-20261024-RX
+ * Authorship provenance: CP-AUTHOR-V1:572X6ZGrIC8gT2xpdmVyIEVsbGlzIFZvc3M=:98c79db4f7add88d22d25ea9e4e683a70c6c4bf5c651a6f1926a3b2db6add3ad
  */
 const ACCOUNTING_PERIOD = "2026 Q4";
 const DATA_AS_OF = "2026-10-22";
